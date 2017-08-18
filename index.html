@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Board</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+	<script type="text/javascript">
+	if (typeof google !== 'undefined'){
+	   	google.charts.load('current', {'packages':['corechart']});
+	    google.charts.setOnLoadCallback(drawChart);
+	}
+
+	var canvas, ctx, key, textbox;
+	var node, edge, idCnt;
+	var mouse = {px:0, py:0, x:0, y:0, mode:0, sw:false, pst:null, st:null, dr:-1, cx:null, cy:null, sel:[]};
+	var borderWidth = 1;
+	var rets;
+	var learningFlg = false;
+	var timer_draw, timer_getInfo_weight_summary, timer_getInfo_learning_status, timer_drawChart, timer_getInfo_image_sample, timer_getInfo_shape;
+	var chartData;
+
+	//var canvas2, ctx2;
+
+	//以下、tbとリンクした変数たち
+	var numOfOpti = 4;
+	var opti = Array(numOfOpti);
+	var optiee = Array(numOfOpti);
+	var loss = Array(numOfOpti);
+	var cond = Array(numOfOpti);
+	var settings;
+	function init(){
+		//socket = io.connect('http://localhost:1337'); //サーバーのアドレスをかく
+		node = {}; idCnt = 0;
+		edge = {};
+		rets = {};
+		//opti = ['optimizers.Adam()', 'optimizers.SGD(lr=0.01)', 'optimizers.MomentumSGD(lr=0.01)'];
+		key = new Array(256); for(var i=0;i<key.length;i++) key[i] = false;
+		textbox = document.getElementById('tb_opt');
+		canvas = document.getElementById('canvas_main');
+		ctx = canvas.getContext('2d');
+		ctx.font = "14px arial, sans-serif";
+		//canvas2 = document.getElementById('canvas_sub');
+		//ctx2 = canvas2.getContext('2d');
+		//ctx2.font = "14px arial, sans-serif";		
+		canvas.setAttribute('tabindex', 0); // focusしている時のみ、keyDown,up を有効に
+		canvas.addEventListener('keydown', function(e){
+			console.log("keydown:"+e.keyCode);
+			key[e.keyCode] = true;
+			//押された瞬間にやりたい処理はここに書く
+			var s = selectedNode();
+			if (e.keyCode == 8){//Delete
+				delObjs(mouse.sel.slice(0)); //コピーをとってから渡す（削除操作中にmouse.selが変化してくので・・・）
+			}else if (e.keyCode == ord('A')){//add
+				var newNodeId = addNode(mouse.x, mouse.y);
+				if (key[16] && s != -1){ //shift付き、かつ、選択	中のノードがある
+					addEdge(s, newNodeId);
+				}
+			}
+			if (s != -1){
+				if (key[17]==false){ //ctrlなし
+					var ltype_tmp = '';
+					switch (e.keyCode){
+						case ord('F'):
+							ltype_tmp = 'f'; break;
+						case ord('C'):
+							if (key[16]) ltype_tmp = 'C'; //concat
+							else ltype_tmp = 'c'; //conv
+							break;
+						case ord('P'):
+							ltype_tmp = 'p'; break;
+						case ord('B'):
+							ltype_tmp = 'b'; break;
+						case ord('E'):
+							ltype_tmp = 'e'; break;
+						case ord('N'):
+							ltype_tmp = 'n'; break;
+						case ord('V'):
+							ltype_tmp = 'v'; break;
+						case ord('O'):
+							ltype_tmp = 'o'; break;
+						case ord('I'):
+							ltype_tmp = 'i'; break;
+						case ord('R'):
+							if (key[16]) ltype_tmp = 'R'; // reshape
+							else ltype_tmp = 'r';
+							break;
+						case ord('D'):
+							ltype_tmp = 'd'; break;
+						case ord('S'):
+							ltype_tmp = 's'; break;
+						case ord('M'):
+							ltype_tmp = 'm'; break;
+						case ord('T'):
+							if (key[16]) ltype_tmp = 'T'; //transpose
+							break;
+						case 187:
+							ltype_tmp = '+'; break;
+						case 189:
+							ltype_tmp = '-'; break;
+						case 222:
+							ltype_tmp = '*'; break;
+					}
+					if (ltype_tmp != ''){
+						node[s].ltype = ltype_tmp;
+						initLtype(s);
+						updateTextbox();
+					}
+					//あと、数字キー
+					if (ord('0')<=e.keyCode && e.keyCode<=ord('9')){
+						var num = e.keyCode - ord('0');
+						node[s].optiflg[num] = ! node[s].optiflg[num];
+					}
+				}else{ //ctrlあり
+					var act_tmp = '';
+					if (e.keyCode == ord('R')){ //reluにする
+						act_tmp = 'relu';
+					}else if (e.keyCode == ord('S')){ //sigmoidにする
+						act_tmp = 'sigm';
+					}else if (e.keyCode == ord('E')){ //eluにする
+						act_tmp = 'elu';
+					}else if (e.keyCode == ord('T')){ //tanhにする
+						act_tmp = 'tanh';
+					}else if (e.keyCode == ord('L')){ //leakyReLUにする
+						act_tmp = 'l_relu';
+					}else if (e.keyCode == ord('I')){ //identityにする
+						act_tmp = 'id';
+					}	
+					if (act_tmp != ''){
+						node[s].opt.act = act_tmp;
+						updateTextbox();
+					}									
+				}
+			}else{ //「単一ノードが選択されている」でないときの挙動	
+				switch (e.keyCode){
+					case ord('O'):
+						mouse.mode = 1 //optimizer指定モードのつもり
+						document.body.style.cursor = 'crosshair';
+						break;
+					case ord('N'):
+						mouse.mode = 0 //通常モード
+						document.body.style.cursor = 'default';
+						break;
+				}
+			}
+		});
+		canvas.addEventListener('keyup', function(e){key[e.keyCode] = false;}); //押されてるかどうかの判定はいつでも key[] を見れば良い	
+
+	    canvas.addEventListener("mousemove", function(e){
+			var rect = e.target.getBoundingClientRect();
+			mouse.px = mouse.x;
+			mouse.py = mouse.y;
+			mouse.x = e.clientX - rect.left - borderWidth;
+			mouse.y = e.clientY - rect.top - borderWidth;
+			if (mouse.dr >= 0){
+				node[mouse.dr].x += mouse.x - mouse.px;
+				node[mouse.dr].y += mouse.y - mouse.py;				
+			}
+		});
+		canvas.addEventListener('mousedown', function(e){
+			mouse.sw = true;
+			mouse.pst = mouse.st;
+			mouse.st = Date.now();
+			var selected_tmp = -1;
+			for(var i in node){
+				var n = node[i];
+				if (n.x-n.w/2 <= mouse.x && mouse.x < n.x+n.w/2){
+					if (n.y-n.h/2 <= mouse.y && mouse.y < n.y+n.h/2){
+						selected_tmp = i;
+						//break; //しない。last match にしたいので。（描画順で最後のものが選択されるのが自然）
+					}
+				}
+			}
+			if (selected_tmp != -1){ //ノードが選択されたことが確定。
+				var s = selectedNode();
+				if (s != -1 && key[16]){ //前回の選択がノードで、かつ今回シフト付きノード選択だった場合
+					addEdge(s, selected_tmp);
+				}
+				if (s != -1 && s == selected_tmp && mouse.st - mouse.pst < 300){ //あるノードがダブルクリックされた場合
+					getActivationDetail();
+				}
+				mouse.dr = selected_tmp; mouse.sel = [selected_tmp+''];
+				updateTextbox();
+				return; //nodeとedge両方選択しうるときはnodeを選択するためここで終了
+			}
+			//ここでノードが選択されなかったことが確定する。
+			selected_tmp = -1;
+			for(var i in edge){
+				var e = edge[i];
+				if (dist(node[e.pre].x, node[e.pre].y, node[e.post].x, node[e.post].y, mouse.x, mouse.y) < 20){
+					selected_tmp = i;
+					//break; //しない。last match にしたいので。（描画順で最後のものが選択されるのが自然）
+				}
+			}
+			if (selected_tmp != -1){ //エッジ選択されたことが確定。
+				mouse.sel = [selected_tmp+''];
+				updateTextbox();
+				return;
+			}
+			//ここで何も選択されなかったことが確定する。
+			mouse.dr = -1;
+			mouse.sel = []; //ノードまたはエッジが選択状態であるか否かはこいつで判定すること。
+			mouse.cx = mouse.x; //空ドラッグ開始地点
+			mouse.cy = mouse.y; //空ドラッグ開始地点
+			updateTextbox();
+		});
+		canvas.addEventListener('mouseup', function(e){
+			if (mouse.cx !== null && mouse.cy !== null){ //空選択中だった場合
+				var x1 = mouse.cx; var x2 = mouse.x; if (x1 > x2) {var tmp = x1; x1 = x2; x2 = tmp;}
+				var y1 = mouse.cy; var y2 = mouse.y; if (y1 > y2) {var tmp = y1; y1 = y2; y2 = tmp;}
+				//まとめて選択
+				mouse.sel = [];
+				for(var i in node){
+					var n = node[i];
+					if (x1 < n.x-n.w/2 && n.x+n.w/2 < x2 && y1 < n.y-n.h/2 && n.y+n.h/2 < y2) mouse.sel.push(i);
+				}
+				for(var i in edge){
+					var e = edge[i];
+					var px1 = node[e.pre].x; var px2 = node[e.post].x; if (px1 > px2) {var tmp = px1; px1 = px2; px2 = tmp;}
+					var py1 = node[e.pre].y; var py2 = node[e.post].y; if (px1 > px2) {var tmp = px1; px1 = px2; px2 = tmp;}
+					if (x1 < px1 && px2 < x2 && y1 < py1 && py2 < y2) mouse.sel.push(i);
+				}
+			}
+			mouse.sw = false;
+			mouse.dr = -1;			
+			mouse.cx = null;
+			mouse.cy = null;
+			mouse.mode = 0 //通常モード
+			document.body.style.cursor = 'default';			
+		});
+		document.getElementById("upload").addEventListener("change",function(e){ //作業状態の読み込み
+			var file = e.target.files;
+			var reader = new FileReader();　//FileReaderの作成
+			if (typeof file[0] !== 'undefined'){
+				reader.readAsText(file[0]);　//テキスト形式で読み込む
+				reader.onload = function(e){//読込終了後の処理
+					var net = JSON.parse(reader.result);
+				    node = net.node;
+				    edge = net.edge;
+				    idCnt = net.idCnt;
+				    opti = net.opti.slice(0,numOfOpti);
+				    optiee = net.optiee.slice(0,numOfOpti);
+				    loss = net.loss.slice(0,numOfOpti);
+				    cond = net.cond.slice(0,numOfOpti);
+				    settings = net.settings;
+				    rets = {}; //サーバーからもらった情報をクリア
+				    refreshTB(); //テキストボックス更新
+				    //非選択状態にする TODO: 関数化
+					mouse.sw = false;
+					mouse.dr = -1;			
+					mouse.cx = null;
+					mouse.cy = null;
+					mouse.mode = 0 //通常モード
+					document.body.style.cursor = 'default';
+				}
+			}
+		},false);    		
+		timer_draw = setInterval(draw, 100);
+	}
+    function netDownload() { //作業状態のダウンロード
+    	refreshTBVars();
+        var content = {'node':node, 'edge':edge, 'idCnt':idCnt, 'opti':opti, 'settings':settings, 'optiee':optiee, 'loss':loss, 'cond':cond};
+        var blob = new Blob([ JSON.stringify(content) ], { "type" : "text/json" });
+        if (window.navigator.msSaveBlob) { 
+            window.navigator.msSaveBlob(blob, "net.json"); 
+        } else {
+            document.getElementById("download").href = window.URL.createObjectURL(blob);
+        }
+    }  	
+	function isArray(obj) {
+    	return Object.prototype.toString.call(obj) === '[object Array]';
+	}
+	function dist(x1, y1, x2, y2, tx, ty){
+		//ちょっと計算面倒なのでとりあえず中点での判定にしとく
+		var cx = (x1+x2)/2; var cy = (y1+y2)/2;
+		var dx = tx-cx; var dy = ty-cy;
+		return Math.sqrt(dx*dx+dy*dy);
+	}
+	function line(x1, y1, x2, y2){
+		ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+	}
+	function arrow(x1, y1, x2, y2){
+		line(x1, y1, x2, y2);
+		var cx = (x1+x2)/2; var cy = (y1+y2)/2;
+		var dx = x2-x1; var dy = y2-y1; var d = Math.sqrt(dx*dx + dy*dy);
+		dx /= d; dy /= d;
+		var c = Math.cos(170/180*Math.PI); var s = Math.sin(170/180*Math.PI);
+		var dx1 = c*dx - s*dy; var dy1 = s*dx + c*dy; // (dx + i dy) (c + i s)
+		var dx2 = c*dx + s*dy; var dy2 = -s*dx + c*dy; // (dx + i dy) (c - i s)
+		line(cx, cy, cx+dx1*20, cy+dy1*20);
+		line(cx, cy, cx+dx2*20, cy+dy2*20);
+	}
+	function getShape(ary){
+		var ret = [];
+		var ar = ary;
+		while(1){
+			if (!isArray(ar)) return ret;
+			ret.push(ar.length);
+			ar = ar[0];
+		}
+	}
+
+	function calcBitmap(ary){ //drawBitmap(ary) が描いてくれる図の [#color, #w, #h] を返す
+		var shape = getShape(ary);
+		var ndim = shape.length;
+		if (ndim==0) return [1, 5, 5];
+		else if (ndim==1){
+			if (shape[0] > 25){
+				return [1, Math.ceil(Math.sqrt(shape[0])), Math.ceil(shape[0]/Math.ceil(Math.sqrt(shape[0])))];
+			}else if (shape[0] > 5){ //1次元的に表示する
+				return [1, shape[0], 5];
+			}else{ //1次元的に表示する（拡大）
+				return [1, shape[0]*5, 5];
+			}
+		}
+		else if (ndim==2) return [1, shape[1], shape[0]];
+		else if (ndim==3) return [shape[0], shape[2], shape[1]];	
+	}function drawBitmap(context, ary, px, py){
+		var shape = getShape(ary);
+		var ndim = shape.length;
+		var cccwch = calcBitmap(ary);
+		var cc = cccwch[0]; var cw = cccwch[1]; var ch = cccwch[2];
+		var myImageData = context.createImageData(cw, ch);
+		if (cc==1 || cc==3){
+			var idx = 0;
+			for(var y=0;y<ch;y++){
+				for(var x=0;x<cw;x++){
+					if (ndim==3){
+						myImageData.data[idx] = ary[0][y][x]*255;
+						myImageData.data[idx+1] = ary[0+1*(shape[0]==3)][y][x]*255;
+						myImageData.data[idx+2] = ary[0+2*(shape[0]==3)][y][x]*255;
+						myImageData.data[idx+3] = 255;
+					}else if (ndim==2){
+						myImageData.data[idx] = ary[y][x]*255;
+						myImageData.data[idx+1] = ary[y][x]*255;
+						myImageData.data[idx+2] = ary[y][x]*255;
+						myImageData.data[idx+3] = 255;
+					}else if (ndim==1){
+						if (shape[0] > 25){
+							myImageData.data[idx] = ary[idx/4]*255;
+							myImageData.data[idx+1] = ary[idx/4]*255;
+							myImageData.data[idx+2] = ary[idx/4]*255;
+							myImageData.data[idx+3] = 255;
+						}else if (shape[0] > 5){ //1次元的に表示する
+							myImageData.data[idx] = ary[idx/4%shape[0]]*255;
+							myImageData.data[idx+1] = ary[idx/4%shape[0]]*255;
+							myImageData.data[idx+2] = ary[idx/4%shape[0]]*255;
+							myImageData.data[idx+3] = 255;
+						}else{ //1次元的に表示する（拡大）
+							myImageData.data[idx] = ary[Math.floor(idx/4/5)%shape[0]]*255;
+							myImageData.data[idx+1] = ary[Math.floor(idx/4/5)%shape[0]]*255;
+							myImageData.data[idx+2] = ary[Math.floor(idx/4/5)%shape[0]]*255;
+							myImageData.data[idx+3] = 255;							
+						}
+					}else if (ndim==0){
+						myImageData.data[idx] = ary*255;
+						myImageData.data[idx+1] = ary*255;
+						myImageData.data[idx+2] = ary*255;
+						myImageData.data[idx+3] = 255;
+					}
+					idx += 4;
+				}
+			}
+			context.putImageData(myImageData, px, py);
+		}else console.log('drawBitmap: invalid number of color channels (shape='+shape+')');		
+	}
+	function draw(){
+    	if (canvas.getContext){
+    		ctx.fillStyle = '#FFFFFF';
+    		ctx.fillRect(0, 0, canvas.width, canvas.height);
+    		ctx.fillStyle = '#3399FF';
+    		for(var i in edge){
+    			var e = edge[i];
+    			ctx.strokeStyle = '#000000';
+    			if (mouse.sel.indexOf(i) >= 0){ //全選択するとO(n^2)なので注意 例えば連想配列 selectedFlg[] を持てば良い
+    				ctx.lineWidth = 3;
+    			}else{
+    				ctx.lineWidth = 1;
+    			}
+    			arrow(node[e.pre].x, node[e.pre].y, node[e.post].x, node[e.post].y);
+    			//ctx.fillText(i, (node[e.pre].x+node[e.post].x)/2, (node[e.pre].y+node[e.post].y)/2);
+    		}
+    		for(var i in node){
+    			var n = node[i];
+    			n.text = '';
+    			if (n.ltype=='f') {n.text += 'fc ('+n.opt.out_channel+'ch)'; n.color='#3399ff';}
+    			else if (n.ltype=='c') {n.text += 'conv ('+n.opt.out_channel+'ch)['+n.opt.ksize+']{'+n.opt.stride+'}|'+n.opt.pad+'|'; n.color='#88bbff';}
+    			else if (n.ltype=='p') {n.text += 'pool <'+n.opt.type+'>['+n.opt.ksize+']{'+n.opt.stride+'}|'+n.opt.pad+'|'; n.color='#ff9933';}
+    			else if (n.ltype=='n') {n.text += 'norm'; n.color='#33ff55';}
+    			else if (n.ltype=='C') {n.text += 'Concat <'+n.opt.type+'>'; n.color='#a0a0a0';}
+    			else if (n.ltype=='e') {n.text += 'exp.replay (size='+n.opt.size+')'; n.color='#33aa55';}
+    			else if (n.ltype=='b') {n.text += 'batchNorm ('+n.opt.size+'ch)'; n.color='#33ff55';}
+    			else if (n.ltype=='s') {n.text += 'softmaxCrossEnt'; n.color='#33ff55';}
+    			else if (n.ltype=='d') {n.text += 'dropout (ratio='+n.opt.ratio+')'; n.color='#aa3355';}
+    			else if (n.ltype=='m') {n.text += 'meanSquaredError'; n.color='#33ff55';}
+    			else if (n.ltype=='i') {n.text += 'input <-- '+n.opt.source; n.color='#d0d0d0';}
+    			else if (n.ltype=='v') {n.text += 'value '+n.opt.value+' (type:'+n.opt.type+')'; n.color='#f0f0f0';}
+    			else if (n.ltype=='T') {n.text += 'Transpose'; n.color='#a0a0a0';}
+    			//else if (n.ltype=='R') {n.text += 'Reshape'; n.color='#f0f0f0';}
+    			else if (n.ltype=='o') {n.text += n.opt.func; n.color='#f0f0f0';}
+    			else if (['+','-','*'].indexOf(n.ltype)>=0) {n.text += n.ltype; n.color='#a0a0a0';}
+    			else if (n.ltype=='r') {n.text += 'random <'+n.opt.type+'>('+n.opt.sample_shape+')'; n.color='#d0d0ff';}    			
+    			n.text += ' (' + n.opt.act + ')';
+    			for(var j=0;j<10;j++){
+    				if (n.optiflg[j]){
+		    			n.text += ' #'+j;
+		    		}
+		    	}
+
+    			n.text += '\n';
+    			for(var j in n.opt){
+    				if (!isMainArg(n.ltype, j)) n.text += j + '=' + n.opt[j] + ' ';
+    			}
+
+    			ctx.fillStyle = n.color;
+    			ctx.fillRect(n.x-n.w/2,n.y-n.h/2,n.w,n.h);
+    			ctx.lineWidth = 0.5; ctx.strokeStyle = '#000000';
+    			if (mouse.sel.indexOf(i) >= 0){ //全選択するとO(n^2)なので注意 例えば連想配列 selectedFlg[] を持てば良い
+    				ctx.lineWidth = 3;
+    			}
+    			ctx.strokeRect(n.x-n.w/2,n.y-n.h/2,n.w,n.h);
+
+    			ctx.fillStyle = "#000000";
+    			ctx.lineWidth = 1;
+    			ctx.textAlign = 'center';
+    			ctx.textBaseline = 'bottom';
+    			fillText2(n.text, n.x, n.y, n.w);
+    			//image_sample情報の描画
+    			if (typeof rets.image_sample !== 'undefined' && typeof rets.image_sample[i] !== 'undefined' && document.getElementById('cb_image_sample').checked){
+    				var im = rets.image_sample[i]; //4次元のはず 0--1のはず
+    				var shape = getShape(im);
+    				var offs = 0;
+    				for(var j=0;j<shape[0];j++){ //プレビュー。
+    					var cccwch = calcBitmap(im[j]);
+    					drawBitmap(ctx, im[j], n.x+n.w/2 + offs, n.y-n.h/2);
+    					offs += 1 + cccwch[1];
+    				}
+    			}
+
+    			//weight_summary情報も描画しよう
+    			if (typeof rets.weight_summary !== 'undefined' && typeof rets.weight_summary[i] !== 'undefined' && document.getElementById('cb_weight_summary').checked){
+    				var ws = rets.weight_summary[i];
+    				var msg = '';
+    				if (typeof ws.W_norm !== 'undefined'){
+    					msg += '|W|=' + ws.W_norm.toFixed(3);
+    					msg += ' (M ' + ws.W_pre_maxovl.toFixed(2) + ', n ' + ws.W_pre_minnorm.toFixed(1) + ' / ';
+    					msg += 'M ' + ws.W_post_maxovl.toFixed(2) + ', n ' + ws.W_post_minnorm.toFixed(1) + ')';
+    					msg += '\n';
+    				}
+    				if (typeof ws.b_norm !== 'undefined') msg += '|b|=' + ws.b_norm.toFixed(3) + '\n';
+    				if (msg != ''){
+	    				var cxy = centerOfEdge(n.from[0]); //流入辺(1本のはず)の中央の座標を取得。
+						fillText2(msg, cxy[0], cxy[1]);
+					}
+    			}
+    			//shape情報も描画しよう
+    			if (typeof rets.shape !== 'undefined' && typeof rets.shape[i] !== 'undefined' && document.getElementById('cb_shape').checked){
+	    			ctx.textAlign = 'left';
+	    			ctx.textBaseline = 'middle';    				
+    				ctx.fillText('('+rets.shape[i]+')', n.x+n.w/2, n.y+n.h/2);
+    			}
+    		}
+    		//learning_status情報も画面左上に
+    		if (typeof rets.learning_status !== 'undefined' && document.getElementById('cb_learning_status').checked){
+	    		ctx.fillStyle = '#000000';
+	    		ctx.lineWidth = 1;
+	    		ctx.textAlign = 'left';
+	    		ctx.textBaseline = 'top';
+	    		ctx.fillText(JSON.stringify(rets.learning_status), 0, 0);
+	    	}
+    		//空ドラッグ中は選択枠を描画する
+    		if (mouse.cx !== null){
+    			ctx.strokeStyle = "#c0c0c0";
+    			ctx.lineWidth = 1;
+    			ctx.strokeRect(mouse.cx, mouse.cy, mouse.x-mouse.cx, mouse.y-mouse.cy);
+    		}
+    	}
+	}
+	function centerOfEdge(id){
+		var e = edge[id];
+		var n1 = node[e.pre];
+		var n2 = node[e.post];
+		return [(n1.x + n2.x)/2, (n1.y + n2.y)/2];
+	}
+	function delObjs(ids){
+		console.log("called:delObjs("+ids+")");
+		for(var i=0;i<ids.length;i++){
+			var id = ids[i];
+			if (node[id]!==undefined) delNode(id); else if (edge[id]!==undefined) delEdge(id);
+		}
+	}
+	function delEdge(id){
+		console.log("called:delEdge("+id+")");		
+		var ar = node[edge[id].pre].to;
+		ar.some(function(v,i){if (v==id) ar.splice(i,1);});
+		ar = node[edge[id].post].from;
+		ar.some(function(v,i){if (v==id) ar.splice(i,1);});
+		delete edge[id];
+		mouse.sel = mouse.sel.filter(function(v){return v != id;});	
+	}
+	function delNode(id){
+		console.log("called:delNode("+id+")");
+		var li = node[id].from.slice(); //sliceは値コピーのため
+		for(var i=0;i<li.length;i++) delEdge(li[i]); //自己ループがあると重複消去しない？
+		li = node[id].to.slice();
+		for(var i=0;i<li.length;i++) delEdge(li[i]); //自己ループがあると重複消去しない？
+		delete node[id];
+		mouse.sel = mouse.sel.filter(function(v){return v != id;});	
+	}
+	function addNode(x=null, y=null){
+		if (x===null) x = Math.random()*800;
+		if (y===null) y = Math.random()*600;
+		node[idCnt] = {'x':x, 'y':y, 'w':180, 'h':40, 'text':'', 'opt':'', 'color':'#808080', 'ltype':'f', 'code':'', 'to':[], 'from':[], 'optiflg':[false,false,false,false,false,false,false,false,false,false]}; idCnt++;
+		initLtype(idCnt-1);
+		mouse.sel = [(idCnt-1)+''];
+		updateTextbox();
+		return idCnt-1;
+	}
+	function addEdge(id, id2){
+		//自己ループと多重辺はここで回避する
+		if (id == id2) {console.log('autoedge escaped.'); return null;}
+		for(var i in edge){
+			if (edge[i].pre==id && edge[i].post==id2) {console.log('multiedge escaped.'); return null;}
+		}
+		edge[idCnt] = {pre:id, post:id2}; idCnt++;
+		node[id2].from.push(idCnt-1);
+		node[id].to.push(idCnt-1);
+		return idCnt-1;
+	}
+	function selectedNode(){
+		if (mouse.sel.length===1 && node[mouse.sel[0]]!==undefined) return mouse.sel[0];
+		return -1;
+	}
+	function ord(char){
+		return char.charCodeAt(0); 
+	}
+	function fillText2(text, x, y, w=null, lf=16){ //複数行に対応した版
+	    var column = [''], line = 0;
+		for(var i=0;i<text.length;i++) {
+		    var char = text.charAt(i);
+		    if (char == "\n"){//} || ctx.measureText(column[line] + char).width > width) {
+		        line++;
+		        column[line] = '';
+		    }
+		    column[line] += char;
+		}
+		for (var j=0;j<column.length;j++){
+			if (w===null) ctx.fillText(column[j], x, y + lf * j); else ctx.fillText(column[j], x, y + lf * j, w);
+		}
+	}
+	function initLtype(id){
+		//node[id].ltypeに従ってnode[id].optを初期化
+		switch (node[id].ltype){
+			case 'f':
+				node[id].opt = {act:'relu', out_channel:10}; break;
+			case 'c':
+				node[id].opt = {act:'relu', out_channel:10, ksize:[1], stride:[1], pad:[1]}; break;
+			case 'p':
+				node[id].opt = {act:'id', type:'max', ksize:[1], stride:[1], pad:[1]}; break;
+			case 'b':
+				node[id].opt = {act:'id', size:10}; break;
+			case 'e':
+				node[id].opt = {act:'id', size:10}; break;
+			case 'n':
+				node[id].opt = {act:'id', mu:0, sigma:1}; break;
+			case 'd':
+				node[id].opt = {act:'id', ratio:0.5}; break;
+			case 'i':
+				node[id].opt = {act:'id', source:'mnist_train_x'}; break;
+			case 'r':
+				node[id].opt = {act:'id', type:'normal', mu:0, sigma:1, sample_shape:[20]}; break;
+			case 'v':
+				node[id].opt = {act:'id', value:0, type:'float32'}; break;
+			case 'o':
+				node[id].opt = {act:'id', func:'yourFunc'}; break;
+			case 'R':
+				node[id].opt = {act:'id', func:'F.reshape', shape:[-1]}; node[id].ltype = 'o'; break; //other として扱う
+			case 'C':
+				node[id].opt = {act:'id', type:'channel_dim'}; break;
+				//otherとして扱うか迷ったがF.concatの引数の形式が微妙に違って扱いづらい
+			default:
+				node[id].opt = {act:'id'}; break;
+		}
+	}
+	function isMainArg(ltype, argstr){
+		switch (ltype){
+			case 'f':
+				return ['act', 'out_channel'].indexOf(argstr) >= 0;
+			case 'c':
+				return ['act', 'out_channel', 'ksize', 'stride', 'pad'].indexOf(argstr) >= 0;
+			case 'p':
+				return ['act', 'type', 'ksize', 'stride', 'pad'].indexOf(argstr) >= 0;
+			case 'b':
+				return ['act', 'size'].indexOf(argstr) >= 0;
+			case 'e':
+				return ['act', 'size'].indexOf(argstr) >= 0;
+			case 'i':
+				return ['act', 'source'].indexOf(argstr) >= 0;
+			case 'd':
+				return ['act', 'ratio'].indexOf(argstr) >= 0;
+			case 'r':
+				return ['act', 'type', 'sample_shape'].indexOf(argstr) >= 0;
+			case 'v':
+				return ['act', 'value', 'type'].indexOf(argstr) >= 0;
+			case 'o':
+				return ['act', 'func'].indexOf(argstr) >= 0;
+			case 'C':
+				return ['act', 'type'].indexOf(argstr) >= 0;
+			default:
+				return ['act'].indexOf(argstr) >= 0;
+		}
+	}
+	function updateTextbox(){
+		//ノード選択中であれば、選択してるノードの内容にtextboxを更新
+		var s = selectedNode();
+		if (s >= 0) textbox.value = JSON.stringify(node[s].opt); else textbox.value = "";
+	}
+	function updateOpt(){
+		//テキストボックスのjsonを選択中のノードのoptに反映
+		var s = selectedNode();
+		if (s >= 0) node[s].opt = JSON.parse(textbox.value);
+	}
+	function textboxSubmitCheck(){
+		if(window.event.keyCode==13) document.getElementById("b_opt").click(); //フォームからEnterキーでも反映可能に
+	}
+	function setNet(active=null){
+		if ((active===true || active===null) && !learningFlg){ //サーバーと通信開始
+			sendNetworkInfoToServer();
+			timer_getInfo_weight_summary = setInterval(function(){getInfo('weight_summary');},1000); //引数付きのsetInterval
+			timer_getInfo_shape = setInterval(function(){getInfo('shape');},1000);
+			timer_getInfo_learning_status = setInterval(function(){getInfo('learning_status');},1000);
+			timer_drawChart = setInterval(function(){drawChart();},20000); 
+			timer_getInfo_image_sample = setInterval(function(){getInfo('image_sample');},5000);
+			document.getElementById("b_net_toggle").value="Quit Learning";
+			chartData = {};
+			learningFlg = true;
+		}else if ((active===false || active===null) && learningFlg){ //サーバーと通信停止
+			stopServerLearning();
+			clearInterval(timer_getInfo_weight_summary);
+			clearInterval(timer_getInfo_shape);
+			clearInterval(timer_getInfo_learning_status);
+			clearInterval(timer_drawChart);
+			clearInterval(timer_getInfo_image_sample);
+			document.getElementById("b_net_toggle").value="Start Learning";
+			learningFlg = false;
+		}
+	}
+	//----------テキストボックスを変数と同期するための関数------------
+	function refreshTBVars(){
+		for(var i=0;i<numOfOpti;i++) opti[i] = document.getElementById("tb_opti"+i).value;
+		for(var i=0;i<numOfOpti;i++) optiee[i] = document.getElementById("tb_optiee"+i).value;
+		for(var i=0;i<numOfOpti;i++) loss[i] = document.getElementById("tb_loss"+i).value;
+		for(var i=0;i<numOfOpti;i++) cond[i] = document.getElementById("tb_cond"+i).value;
+		settings = JSON.parse(document.getElementById("tb_settings").value);
+	}function refreshTB(){
+		for(var i=0;i<numOfOpti;i++) document.getElementById("tb_opti"+i).value = opti[i];
+		for(var i=0;i<numOfOpti;i++) document.getElementById("tb_optiee"+i).value = optiee[i];
+		for(var i=0;i<numOfOpti;i++) document.getElementById("tb_loss"+i).value = loss[i];
+		for(var i=0;i<numOfOpti;i++) document.getElementById("tb_cond"+i).value = cond[i];
+		document.getElementById("tb_settings").value = JSON.stringify(settings);		
+	}
+	//------------------------------------------------------
+
+
+	function sendNetworkInfoToServer(){
+		refreshTBVars();
+		sendToServer({'command':'set', 'data':{'node':node, 'edge':edge, 'opti':opti, 'settings':settings, 'optiee':optiee, 'loss':loss, 'cond':cond}}, undefined);
+	}
+	function stopServerLearning(){
+		sendToServer({'command':'stop'}, undefined);	
+	}
+	function shutdownServer(){
+		sendToServer({'command':'shutdown'}, undefined);	
+	}
+	function getInfo(type){
+		sendToServer({'command':'getinfo', 'params':{'type':type}}, type);
+	}
+	function getActivationDetail(id){
+		if (typeof id === 'undefined'){
+			id = selectedNode();
+			if (id === -1) return;
+		}
+		var type = 'activation_detail';
+		sendToServer({'command':'getinfo', 'params':{'type':type, 'id':id}}, type);
+	}
+	function execCode(){
+		sendToServer({'command':'exec', 'data':document.getElementById('tb_code').value}, null);
+	}
+	function sendToServer(data, kwd){ //サーバー側に data <JSON object> を送りつける
+		//data['command'] <string> にコマンドを表す文字列を入れて送りつける
+		//kwd によって、返答(JSON文字列でかえってくる)の処理が変わる
+		//  undefinedの場合はスルーする。nullの場合はダイアログに表示。文字列の場合は、global変数 rets[kwd] にJSONオブジェクトの形で格納する。
+		var xmlHttpRequest = new XMLHttpRequest();
+		xmlHttpRequest.onreadystatechange = function(){
+		    var READYSTATE_COMPLETED = 4;
+		    var HTTP_STATUS_OK = 200;
+		    if( this.readyState == READYSTATE_COMPLETED){
+		    	if (this.status == HTTP_STATUS_OK ){
+			    	if (kwd === null) alert( this.responseText ); // レスポンスの表示
+			    	else if (typeof kwd !== 'undefined') rets[kwd] = JSON.parse(this.responseText);
+			    	//通信が生じたタイミングでchartDataも更新するよ
+			    	if (kwd=='learning_status'){ //中身は全部chartDataに追加する（数値じゃないエントリは null にする）
+			    		for(var i in rets[kwd]){
+			    			if (['update_cnt','aveloss','aveacc'].indexOf(i) >= 0){
+			    				var d = rets[kwd][i];
+			    				if (isArray(d)) d = d[0]; //先頭要素だけとする。TODO
+			    				if (typeof d != 'number' || !isFinite(d)) d = 0.0; //nullやundefにするとgoogle chart apiでエラーになる・・
+			    				if (chartData[i]===undefined){
+			    					chartData[i] = [d];
+			    				}else{
+			    					chartData[i].push(d);
+			    				}
+			    			}
+			    		}
+			    	}else if (kwd=='activation_detail'){ //帰ってきた詳細情報をポップアップする処理
+			    		var id = data.params.id;
+			    		var n = node[id];
+			    		dialogInfo(rets[kwd], n.x-n.w/2, n.y+n.h/2);
+			    	}
+			    }else{ //通信エラー時にここにくる
+			    	setNet(active=false);
+			    }
+		    }
+		}
+		xmlHttpRequest.open( 'POST', 'http://localhost:8000/' );
+		xmlHttpRequest.setRequestHeader( 'Content-Type', 'text/plain' );
+		xmlHttpRequest.send( JSON.stringify( data ) ); //データ送信
+	}
+    function drawChart() {
+        /*
+          [['Year', 'Sales', 'Expenses'],
+          [2004,  1000,      400],
+          [2005,  1170,      460],
+          [2006,  660,       1120],
+          [2007,  1030,      540]]
+         */
+        //まず chartData を上記の ary の形に変換する必要がある。
+        if (typeof google === 'undefined') return;
+        if (typeof chartData === 'undefined' || typeof chartData['update_cnt'] === 'undefined') return;
+        var len = chartData['update_cnt'].length;
+		var step = Math.ceil(len/500); //500点以上には増えないようにしてる(chartが重くなる？)
+		var shortlen = Math.ceil(len/step);
+        var ary = Array(1+shortlen);
+        ary[0] = ['update_cnt'];
+        for(var i=0;i<shortlen;i++){
+        	ary[1+i] = [chartData['update_cnt'][i*step]];
+        }
+        for(var j in chartData){
+        	if (j !== 'update_cnt'){
+        		ary[0].push(j);
+        		for(var i=0;i<shortlen;i++){
+        			ary[1+i].push(chartData[j][i*step]);
+        		}
+        	}
+        }
+        //console.log(ary);
+
+
+        var data = google.visualization.arrayToDataTable(ary);
+        var options = {
+          title: 'Learning Curve',
+          curveType: 'none',
+          legend: { position: 'bottom' },
+        };
+        if (document.getElementById("x_logscale").checked) options['hAxis'] = {logScale: true};
+        if (document.getElementById("y_logscale").checked) options['vAxis'] = {logScale: true};
+        var chart = new google.visualization.LineChart(document.getElementById('curve_chart'));
+        chart.draw(data, options);
+    }	
+    </script>
+    <style type="text/css">
+    	canvas { border: 1px solid #999; }
+		div#msgbox {
+		position : absolute;
+		display : none;
+		visibility : hidden;
+		background-color : #8888aa;
+		top : 0px;
+		left : 200px;
+		z-index : 301;
+		}    	
+    </style>
+  </head>
+  <body onload="init();">
+  	<!-- <script src="http://localhost:1337/socket.io/socket.io.js"></script> --> <!--サーバーのアドレス-->
+  	<canvas id="canvas_main" width="800" height="600"></canvas>
+	<form name="form1">
+	Show:
+	<input id="cb_weight_summary" type="checkbox" checked="checked"/><label for="cb_weight_summary">weight_summary</label>
+	<input id="cb_shape" type="checkbox" checked="checked"/><label for="cb_shape">shape</label>
+	<input id="cb_learning_status" type="checkbox" checked="checked"/><label for="cb_learning_status">learning_status</label>
+	<input id="cb_image_sample" type="checkbox" checked="checked"/><label for="cb_image_sample">image_sample</label>
+	<br>
+	Options: <input type="text" id="tb_opt" value="" size="80" onkeydown="textboxSubmitCheck();">
+	<input type="button" id="b_opt" value="Update" onclick="updateOpt();"><br>
+	<input type="button" id="b_net_toggle" value="Start Learning" onclick="setNet();"><br>	
+<!--
+	<input type="button" id="b_checkshape" value="型チェック" onclick="getInfo('shape');"><br>	
+	<input type="button" id="b_checkweight" value="重みチェック" onclick="getInfo('weight_summary');"><br>	
+	<input type="button" id="b_checklearn" value="学習状況チェック" onclick="getInfo('learning_status');"><br>	
+-->
+	training settings: <input type="text" id="tb_settings" size="80" value='{"bs":100, "aveintvl":100}'><br>
+	<hr>
+	optimizer 0: <input type="text" id="tb_opti0" size="30" value="optimizers.Adam()">
+	optimizee: #<input type="text" id="tb_optiee0" size="1" value="0">
+	loss: #<input type="text" id="tb_loss0" size="1" value="4">
+	condition: <input type="text" id="tb_cond0" size="30" value="lambda x:1"><br>
+	optimizer 1: <input type="text" id="tb_opti1" size="30" value="optimizers.SGD(lr=0.01)">
+	optimizee: #<input type="text" id="tb_optiee1" size="1" value="1">
+	loss: #<input type="text" id="tb_loss1" size="1" value="5">
+	condition: <input type="text" id="tb_cond1" size="30" value="lambda x:1"><br>
+	optimizer 2: <input type="text" id="tb_opti2" size="30" value="optimizers.MomentumSGD(lr=0.01)">
+	optimizee: #<input type="text" id="tb_optiee2" size="1" value="2">
+	loss: #<input type="text" id="tb_loss2" size="1" value="6">
+	condition: <input type="text" id="tb_cond2" size="30" value="lambda x:1"><br>
+	optimizer 3: <input type="text" id="tb_opti3" size="30" value="optimizers.AdaDelta()">
+	optimizee: #<input type="text" id="tb_optiee3" size="1" value="3">
+	loss: #<input type="text" id="tb_loss3" size="1" value="7">
+	condition: <input type="text" id="tb_cond3" size="30" value="lambda x:1"><br>
+	<hr>
+	Execute Code: <input type="text" id="tb_code" value="self.mdl.opt[0].alpha = 0.001" size="80">
+	<input type="button" id="b_code" value="Execute" onclick="execCode();"><br>
+	<hr>
+	<input id="x_logscale" type="checkbox" onchange="drawChart();"/><label for="x_logscale">x logscale</label>
+	<input id="y_logscale" type="checkbox" onchange="drawChart();"/><label for="y_logscale">y logscale</label>
+	<input type="button" id="b_chart" value="Update graph manually" onclick="drawChart();"><br>	
+	<div id="curve_chart" style="width: 900px; height: 500px"></div>
+	</form>
+	<hr>
+    <a id="download" href="#" download="net.json" onclick="netDownload();">Download Canvas</a><br>
+    Load Canvas: <input type="file" id="upload"><br>
+    <hr>
+	<input type="button" id="b_code" value="Shutdown Server" onclick="shutdownServer();"><br>    
+    <!-- msgbox -->
+	<div id="msgbox">
+		<div id="msgContents"></div>
+		<div id="msgButton" style="text-align : center"><input type="button" id="msgCloseBtn" name="msgCloseBtn" value="close" onClick="hideMsgbox();" /></div>
+	</div>
+	<script type='text/javascript'>
+		function showMsgbox(){
+			mb = document.getElementById("msgbox");
+			mb.style.left = '' + Math.floor((document.width - mb.offsetWidth) / 2) + "px";
+			mb.style.top = '' + Math.floor((document.height - mb.offsetHeight) / 2) + "px";
+			showDiv(mb);
+		}
+		function hideMsgbox(){
+			hideDiv(document.getElementById("msgbox"));
+		}
+		var showDiv = function(obj){
+			obj.style.display = "block";
+			obj.style.visibility = "visible";
+		};
+		var hideDiv = function(obj){
+			obj.style.display = "block";
+			obj.style.visibility = "hidden";
+		};
+		function dialogInfo(info, x=null, y=null){
+			var msg = document.getElementById("msgbox");
+			if (x !== null && y !== null) {msg.style.top = '' + (y+canvas.offsetTop) + 'px'; msg.style.left = '' + (x+canvas.offsetLeft) + 'px';}
+			if (typeof info === 'string'){ //文字列だけ表示
+				document.getElementById("msgContents").innerHTML = info;
+			}else{　//canvasを用意し、その中に情報を適切に描画する
+				//以下は info が 4次元配列な場合のみを想定して書きます	(TODO)			
+				var shape = getShape(info);
+				var ndim = shape.length;
+				if (ndim > 0){
+					var nx = Math.ceil(Math.sqrt(shape[0])); //横にアイコンを並べる個数
+					var ny = Math.ceil(shape[0]/nx); //縦にアイコンを並べる個数
+					var cccwch = calcBitmap(info[0]); var cc = cccwch[0]; var cw = cccwch[1]; var ch = cccwch[2];
+					//cw, ch: アイコン一個の横縦幅
+					var width = (cw + 2) * nx;
+					var height = (ch + 2) * ny;
+					document.getElementById("msgContents").innerHTML = '<canvas id="canvas_sub" width="' + width + '" height="' + height + '"></canvas>';
+					var canvas2 = document.getElementById('canvas_sub');
+					var ctx2 = canvas2.getContext('2d');
+					for(var i=0;i<shape[0];i++){
+						var px = i % nx * (2 + cw);
+						var py = Math.floor(i / nx) * (2 + ch);
+						drawBitmap(ctx2, info[i], px, py);
+					}
+				}
+			}
+			showMsgbox();
+		}	
+	</script>    
+  </body>
+</html>
