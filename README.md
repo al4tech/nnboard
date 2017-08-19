@@ -3,6 +3,10 @@ a GUI editor for neural network
 
 chainer 向けの GUI エディタです。
 
+## 動作環境
+- python 3.5.2 以降 （おそらく 3.5 以降なら動きます）
+- chainer 2.0.2 以降 （おそらく 1.19 以降なら動きます）
+
 ## 使い方
 ### ダウンロード
 ```
@@ -17,6 +21,7 @@ python server.py
 `server.py` を実行すると、自動的に `index.html` が開きます。このページ上で、ニューラルネットワークをさくさく設計することができます。
 
 ### 終了
+
 `index.html` の最下部にある `Shutdown Server` ボタンを押してください。すると、 `server.py` がシャットダウンします。
 
 ### 作業状態の保存と読み込み
@@ -32,10 +37,6 @@ python server.py
 
 <!-- `server.py` automatically opens `index.html`; in this page you can edit neural networks on GUI.
 Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `server.py` continues running. -->
-
-## 動作環境
-- python 3.5.2 以降 （おそらく 3.5 以降なら動きます）
-- chainer 2.0.2 以降 （おそらく 1.19 以降なら動きます）
 
 
 ## 詳しい使い方
@@ -64,14 +65,24 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 ### 学習
 
+- `Start Learning` ボタンを押すと、学習が始まります。
+
+- 正常に学習が始まると、ボタンの表示が `Quit Learning` に変化します。`Quit Learning` ボタンを押すと、学習が終了し、ボタンの表示が `Start Learning` に戻ります。何らかのエラーが生じて学習が死んだ場合も、ボタンの表示が `Start Learning` に戻ります。
+
+- 学習中の表示の見方
+
+    - 各層をダブルクリックすると、現在の層の値をいつでも可視化することができます。
+    
 
 ### 構成
+
 - `index.html`：編集画面(GUI)
+
 - `server.py`：chainerでニューラルネットの計算を行うサーバー
 
 ### FAQ
 
-- 起動時に `Address already in use` などと表示される
+- `server.py` 起動時に `Address already in use` などと表示されて起動できない。
 
     - 以下を確かめてみてください：
 
@@ -80,3 +91,21 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     - それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
 
         - 現状 `server.py`　と `index.html` の中にポート番号がハードコードされてますが、いずれ修正可能にしたいと思います
+
+- テストエラー見たい
+    
+    - 現状、そのような機能はありません
+    
+- 学習中にネットワークいじったらどうなるの
+
+    - 現状、どうにもなりませんが、そのうち、ネットワークを学習中に動的にいじれるようにしたいと思っています。
+
+- `Start Learning` ボタンを押しても `Quit Learning` に変化しない
+
+    - おそらく一瞬で学習が落ちてます。
+
+
+
+
+
+
