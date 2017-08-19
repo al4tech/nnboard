@@ -4,17 +4,26 @@ a GUI editor for neural network
 chainer 向けの GUI エディタです。
 
 ## 使い方
-- ダウンロード
+### ダウンロード
 ```
 git clone https://github.com/yos1up/nnboard.git
 ```
 
-- 実行
+### 実行
 ```
 python server.py
 ```
 `server.py` を実行すると、自動的に `index.html` が開きます。このページ上で、ニューラルネットワークをさくさく設計することができます。
-終了するときは、ページの最下部にある `Shutdown Server` ボタンを押してください。すると、 `server.py` がシャットダウンします。
+もし起動時に `Address already in use` などと表示された場合は、以下を確かめてください。
+- `server.py` が前回から起動したままになっている。 → `index.html` を（手動で）開いてから、下の手順でシャットダウンしてください。
+- それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
+
+### 終了
+`index.html` の最下部にある `Shutdown Server` ボタンを押してください。すると、 `server.py` がシャットダウンします。
+
+### 作業状態の保存と読み込み
+`index.html` の下の方にある
+
 
 <!-- `server.py` automatically opens `index.html`; in this page you can edit neural networks on GUI.
 Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `server.py` continues running. -->
