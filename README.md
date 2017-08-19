@@ -54,16 +54,28 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
     - 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
 
-    - `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます(lambda式も可)。
+
+    - `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
 
 - ある単一の層を選択中に、`Ctrl` キーを押しながら様々な英字キーを押すことで、層の活性化関数を変更することができます。
 
     - 対応キー：`e`(elu),`i`(id),`l`(leaky_relu),`r`(relu),`s`(sigmoid),`t`(tanh)
 
-    - `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も可)。
+    - `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も指定可：例えば `"act":"lambda x:F.relu(x)"` など)。
 
 
 ### 学習
+
+- loss と optimizer を設定する必要があります。
+
+    - 単一の層を選択中に数字キー(`0`-`9`)を押すと、層に「タグ」をつけることができます(層の中に `#0` などと表示されます)。
+    
+    - 一行目には `optimizee: #0, loss:#4` と書いてあります。これに従って、最適化したい loss の層に `#4` タグを指定します。その loss から計算される勾配に従って最適化したい重みをもつ層に `#0` タグを指定します。
+    
+    - 同時に4つまで複数のoptimizerを併用できます。
+    
+    - 複数のoptimizerを交互に動かしたい場合などには、`condition` の指定を行ってください。ここでは「非負整数 x を受け取り、（xイテレーション目にこのoptimizerを動かすか）を返す関数」を指定してください。
+        - 例：optimizer 0 の condtition が `lambda x: x%6` で、optimizer 1 の condition が `lambda x: not(x%6)` の時、「0を5回」→「1を1回」→「0を5回」→・・・という動かし方になります。
 
 - `Start Learning` ボタンを押すと、学習が始まります。
 
@@ -71,9 +83,16 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 - 学習中の表示の見方
 
+    - 各層の右下に表示されているのは shape です。右上は、現在の層の値のプレビューです。
+    
     - 各層をダブルクリックすると、現在の層の値をいつでも可視化することができます。
-    
 
+    - いい感じに可視化されない場合は、任意の層を使って、いい感じに shape を整形すると良いです。
+    
+    - 学習中の loss の変化が折れ線グラフで表示されます（google chart API を利用しているため、インターネット接続時のみの機能です）。
+    
+    - softmax_cross_entropy の層で loss を集計している場合に限り、 accuracy の変化も折れ線グラフで表示されます。
+    
 ### 構成
 
 - `index.html`：編集画面(GUI)
