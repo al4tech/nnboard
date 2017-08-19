@@ -32,10 +32,13 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 - `Del` キーを押すと、選択中の層や結合を削除できます。層を削除すると、層にくっついている結合も一緒に削除されます。
 - ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。
     - 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
-    - `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます(lambda式も可)。
+
+    - `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます(lambda式も可)。
+
 - ある単一の層を選択中に、`Ctrl` キーを押しながら様々な英字キーを押すことで、層の活性化関数を変更することができます。
     - 対応キー：`e`(elu),`i`(id),`l`(leaky_relu),`r`(relu),`s`(sigmoid),`t`(tanh)
-    - `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も可)。
+
+    - `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も可)。
 
 
 ### 学習
