@@ -54,14 +54,13 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
     * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
 
-
-    * `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
+    * `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
 
 * ある単一の層を選択中に、`Ctrl` キーを押しながら様々な英字キーを押すことで、層の活性化関数を変更することができます。
 
     * 対応キー：`e`(elu),`i`(id),`l`(leaky_relu),`r`(relu),`s`(sigmoid),`t`(tanh)
 
-    * `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も指定可：例えば `"act":"lambda x:F.relu(x)"` など)。
+    * `Options`から、（これらに限らない）任意の活性化関数に変更できます(lambda式も指定可：例えば `"act":"lambda x:F.relu(x)"` など)。
 
 
 ### 学習
