@@ -7,6 +7,7 @@ chainer 向けの GUI エディタです。
 ### ダウンロード
 ```
 git clone https://github.com/yos1up/nnboard.git
+cd nnboard
 ```
 
 ### 実行
@@ -14,15 +15,19 @@ git clone https://github.com/yos1up/nnboard.git
 python server.py
 ```
 `server.py` を実行すると、自動的に `index.html` が開きます。このページ上で、ニューラルネットワークをさくさく設計することができます。
-もし起動時に `Address already in use` などと表示された場合は、以下を確かめてください。
-- `server.py` が前回から起動したままになっている。 → `index.html` を（手動で）開いてから、下の手順でシャットダウンしてください。
-- それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
 
 ### 終了
 `index.html` の最下部にある `Shutdown Server` ボタンを押してください。すると、 `server.py` がシャットダウンします。
 
 ### 作業状態の保存と読み込み
-`index.html` の下の方にある
+
+- `index.html` の下の方にある `Download Canvas` リンクを押すと、json ファイルがローカルに保存されます。この中に、構築したネットワークの情報が入っています。
+
+- `Load Canvas` ボタンを押して json ファイルを選択すると、構築したネットワークが復元されます。
+
+- 構築したネットワークとともに、optimizerの設定なども保存されます。
+
+- 学習結果は保存されません・・・
 
 
 <!-- `server.py` automatically opens `index.html`; in this page you can edit neural networks on GUI.
@@ -63,3 +68,15 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 ### 構成
 - `index.html`：編集画面(GUI)
 - `server.py`：chainerでニューラルネットの計算を行うサーバー
+
+### FAQ
+
+- 起動時に `Address already in use` などと表示される
+
+    - 以下を確かめてみてください：
+
+    - `server.py` が前回から起動したままになっている。 → `index.html` を（手動で）開いてから、下の手順でシャットダウンしてください。
+
+    - それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
+
+        - 現状 `server.py`　と `index.html` の中にポート番号がハードコードされてますが、いずれ修正可能にしたいと思います
