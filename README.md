@@ -55,6 +55,8 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
 
     * `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
+    
+    * `Options` は json の書式で書く必要があります。タプルを指定したいときは、(jsの)Array として書きます。例： `"shape":[-1,1,28,28]`
 
 * ある単一の層を選択中に、`Ctrl` キーを押しながら様々な英字キーを押すことで、層の活性化関数を変更することができます。
 
