@@ -860,7 +860,6 @@
 			if (typeof info === 'string'){ //文字列だけ表示
 				document.getElementById("msgContents").innerHTML = info;
 			}else{　//canvasを用意し、その中に情報を適切に描画する
-				//以下は info が 4次元配列な場合のみを想定して書きます	(TODO)			
 				var shape = getShape(info);
 				var ndim = shape.length;
 				if (ndim > 0){
@@ -878,6 +877,8 @@
 						var py = Math.floor(i / nx) * (2 + ch);
 						drawBitmap(ctx2, info[i], px, py);
 					}
+				}else{
+					document.getElementById("msgContents").innerHTML = "" + info;
 				}
 			}
 			showMsgbox();
