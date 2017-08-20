@@ -94,7 +94,9 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
       
       * softmax_cross_entropy の層で loss を集計している場合に限り、 accuracy の変化も折れ線グラフで表示されます。
       
-* 学習中に任意コードの実行ができます。学習係数を途中で変えたりできます。 `Execute Code` にコードを入力し、`Execute` ボタンを押してください。* エラーが出た場合はダイアログで表示されます。
+* 学習中に任意コードの実行ができます。学習係数を途中で変えたりできます。 `Execute Code` にコードを入力し、`Execute` ボタンを押してください。
+
+    * エラーが出た場合はダイアログで表示されます。
     
 ### 構成
 
