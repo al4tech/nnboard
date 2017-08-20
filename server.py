@@ -53,8 +53,8 @@ class linkset(ChainList):
 class nnmdl:
     def __init__(self, net_info):
         self.net_info = net_info
-        self.l = {}
-        self.h = {}
+        self.l = {} # Linkを格納する。'e'のみ記憶の溜め込み場のリストとして使う
+        self.h = {} # Variableを格納する。
         self.bs = self.net_info['settings']['bs']
         self.aveintvl = self.net_info['settings']['aveintvl']
         # トポロジカルソートする
@@ -121,6 +121,14 @@ class nnmdl:
         self.aveloss = None
         self.aveacc = None
         self.update_cnt = 0
+    def update_net(self, net_info_new):
+        '''
+        ネットワークの動的更新
+        基本的には __init__() と同じなんだけど重みやoptimizerの状態を引き継ぐ必要がある
+        '''
+        pass
+
+
     def recur_for_tsort(self, node_id):
         # self.net_infoを元にtsortするときの再帰用 self.visited_for_tsort を更新しつつ self.torder に結果入れてく
         if not(isinstance(node_id, str)): node_id = str(node_id)
@@ -341,10 +349,10 @@ class ComputationThreadManager():
         # threading.Thread.__init__(self)
         self.start_event = threading.Event() # 計算を開始させるかのフラグ
         self.stop_event = threading.Event() # 計算を停止させるかのフラグ
-        self.exit_event = threading.Event() # スレッドを終了させるイベント（不要？）
+        self.exit_event = threading.Event() # スレッドを終了させるイベント
+        self.update_net_event = threading.Event() # ネットワークを動的に更新するためのフラグ
         self.mdl = None
-        self.value = None
-        self.value2 = None
+        self.thread = None
     def target(self):
         """別スレッド"""
         self.computing = False
@@ -358,6 +366,9 @@ class ComputationThreadManager():
                 # トポロジカルソート順、サンプラーのロード、LinkやChain作成など
                 # Chain作成
                 self.mdl = nnmdl(self.net_info)
+            if self.update_net_event.is_set(): # ネットワークの動的更新
+                self.update_net_event.clear()
+                self.mdl.update_net(self.net_info_new)
             if self.stop_event.is_set(): # 学習終了時の処理
                 self.stop_event.clear()
                 self.computing = False
@@ -371,7 +382,7 @@ class ComputationThreadManager():
         # ここで別スレッド終了
     def start_computing(self, net_info):
         self.net_info = net_info
-        self.thread = threading.Thread(target = self.target) # スレッド作成        
+        self.thread = threading.Thread(target = self.target) # スレッド作成（thread can only be started onceなので毎回インスタンス化が必要）        
         self.thread.start() # スレッド開始！
         self.start_event.set()
         print('[computation thread started.]')
@@ -380,6 +391,10 @@ class ComputationThreadManager():
         self.exit_event.set()
         self.thread.join()    #スレッドが停止するのを待つ
         print('[computation thread stopped.]')
+    def update_net(self, net_info): # 学習中の、ネットワークの動的な更新！
+        self.net_info_new = net_info
+        self.update_net_event_set()
+        print('[update_net_event set.]')
     def get_info(self, params):
         typ = params['type']
         dic = {}
@@ -465,7 +480,10 @@ class MyHandler(BaseHTTPRequestHandler):
 
         com = jsonData['command']
         if com == 'set':
-            ctm.start_computing(net_info = jsonData['data'])
+            if ctm.thread is None or (not ctm.thread.is_alive()):
+                ctm.start_computing(net_info = jsonData['data'])
+            else: # 学習中のネットワークの動的な更新！
+                ctm.update_net(net_info = jsonData['data'])
         elif com == 'getinfo':
             body = ctm.get_info(jsonData['params']) # 'data'でもいいんでは 中身 typeだけだし
         elif com == 'exec': # 文字通りexecする
@@ -473,6 +491,7 @@ class MyHandler(BaseHTTPRequestHandler):
         elif com == 'stop':
             ctm.stop_computing()
         elif com == 'shutdown':
+            if ctm.thread is not None and ctm.thread.is_alive(): ctm.stop_computing()
             global httpd
             threading.Thread(target=httpd.shutdown).start() # 他のスレッドからじゃないと殺せないようだ。
         else:
