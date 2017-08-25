@@ -18,6 +18,11 @@ from chainer import Chain, ChainList, cuda, gradient_check, Function, Link, opti
 from chainer import functions as F
 from chainer import links as L
 
+
+def get_error_message(sys_exc_info=None):
+    ex, ms, tb = sys.exc_info() if sys_exc_info is None else sys_exc_info
+    return '[Error]\n' + str(ex) + '\n' + str(ms)
+
 def float_if_float(x):
     # np.float系列がJSON serializableでないのを回避するため
     if isinstance(x, list):
@@ -52,23 +57,51 @@ class linkset(ChainList):
 # class nnmdl(Chain): # 一つのlinkを複数のchainに登録できないようなので、全体を管理するchainはchainでなくした（chainにする必要もないので）
 class nnmdl:
     def __init__(self, net_info):
+        self.initialize(net_info)
+    def initialize(self, net_info, net_info_old=None):
+        self.err_info = {} # 学習中に生じたエラーはここに格納しておく。get_info(typ=='err')で取得されたらクリアされる。
         self.net_info = net_info
-        self.l = {} # Linkを格納する。'e'のみ記憶の溜め込み場のリストとして使う
-        self.h = {} # Variableを格納する。
+        if net_info_old is None: # ガチ初期化の場合
+            self.l = {} # Linkを格納する。'e'のみ記憶の溜め込み場のリストとして使う
+            self.h = {} # Variableを格納する。
+        else: # 動的更新の場合
+            # 削除されたノードの情報を捨て去る
+            for k,v in net_info_old['node'].items():
+                if not (k in net_info['node']): # ノード k は削除された。
+                    print('info: node',k,'is deleted. Deleting related info.')
+                    if k in self.l:del self.l[k]
+                    if k in self.h: del self.h[k]
         self.bs = self.net_info['settings']['bs']
         self.aveintvl = self.net_info['settings']['aveintvl']
-        # トポロジカルソートする
+        # トポロジカルソートする。結果は self.torder リストに格納される。
         self.torder, self.visited_for_tsort = [], set()
         for k in self.net_info['node'].keys():
             self.recur_for_tsort(k)
         self.torder.reverse()
-        # print('self.torder =', self.torder) # トポロジカルソート完了
-        # super(nnmdl, self).__init__()        # 必要な Link を用意する
+        # 閉路検出して警告を出す
+        idx_to_torder = {self.torder[i]: i for i in range(len(self.torder))}
+        for k,v in net_info['edge'].items():
+            if idx_to_torder[str(v['pre'])] > idx_to_torder[str(v['post'])]:
+                print('WARNING!!!!: computation graph contains some cycles. (will be dealt as some acyclic graph.)')
+                break
+        # Linkを用意する
         random_seed = np.random.randint(1000000007)
         for k,v in net_info['node'].items():
+            existed, updated = False, False
+            if net_info_old is not None and k in net_info_old['node']:
+                existed = True # ノード k は以前から存在した。
+                # if v != net_info_old['node'][k]:
+                v_old = net_info_old['node'][k]
+                if v['ltype'] != v_old['ltype'] or v['opt'] != v_old['opt']:
+                    updated = True # ノード k は今回アップデートされた。
+                    print('WARNING: node',k,'is updated!')
+            if existed: continue # 本当は and not updated としたいが、とりあえず今は updated を無視することにする。TODO
+
             if v['ltype']=='f':
                 self.l[k] = L.Linear(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], filt=['nobias', 'initialW', 'initial_bias']))
                 # self.add_link(k, self.l[k])
+            elif v['ltype']=='c':
+                self.l[k] = L.Convolution2D(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], filt=['ksize', 'stride', 'pad', 'nobias', 'initialW', 'initial_bias']))
             elif v['ltype']=='r':
                 self.l[k] = Sampler(source='random_normal', bs=self.bs, opt=v['opt'], sample_shape=v['opt']['sample_shape'], random_seed=random_seed)
             elif v['ltype']=='i':
@@ -87,6 +120,10 @@ class nnmdl:
             else:
                 print('Not Implemented:', v['ltype'])
                 raise NotImplementedError
+
+
+        if net_info_old is not None: return
+        # 現状、optimizerの更新は動的にできないようにしとく。(多分linkset重複定義などでエラー出る) TODO
 
         # optimizer準備
         self.num_of_opt = 4
@@ -126,9 +163,7 @@ class nnmdl:
         ネットワークの動的更新
         基本的には __init__() と同じなんだけど重みやoptimizerの状態を引き継ぐ必要がある
         '''
-        pass
-
-
+        self.initialize(net_info_new, self.net_info)
     def recur_for_tsort(self, node_id):
         # self.net_infoを元にtsortするときの再帰用 self.visited_for_tsort を更新しつつ self.torder に結果入れてく
         if not(isinstance(node_id, str)): node_id = str(node_id)
@@ -143,101 +178,107 @@ class nnmdl:
     def __call__(self, mode='train'): # 順計算
         self.acc = {}
         for nid in self.torder:
-            n = self.net_info['node'][str(nid)]
-            n_ltype = n['ltype']
-            if n_ltype in ['r', 'i']:
-                self.h[nid] = self.l[nid]() # サンプル取得
-            elif n_ltype in ['f', 'c']:
-                vs = self.prevars(n, sort=True)
-                assert(len(vs)==1)
-                self.h[nid] = self.l[nid](vs[0])
-            elif n_ltype == 'C':
-                vs = self.prevars(n, sort=True)
-                typ = n['opt']['type']
-                if typ == 'batch_dim':
-                    axis = 0
-                elif typ == 'channel_dim':
-                    axis = 1
-                else:
-                    raise ValueError
-                self.h[nid] = F.concat(vs, axis=axis)
-            elif n_ltype in ['+', '*']:
-                vs = self.prevars(n)
-                self.h[nid] = 0
-                for v in vs:
-                    if n_ltype == '+':
-                        self.h[nid] += v
+            try: # あるノードでエラーが起きても残りのノードは計算して欲しいので、forの内側にtry書く必要ある。
+                n = self.net_info['node'][str(nid)]
+                n_ltype = n['ltype']
+                if n_ltype in ['r', 'i']:
+                    vs = self.prevars(n, sort=True)
+                    assert len(vs)==0, '0 arg is expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = self.l[nid]() # サンプル取得
+                elif n_ltype in ['f', 'c', 'b']:
+                    vs = self.prevars(n, sort=True)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = self.l[nid](vs[0])
+                elif n_ltype == 'C':
+                    vs = self.prevars(n, sort=True)
+                    typ = n['opt']['type']
+                    if typ == 'batch_dim':
+                        axis = 0
+                    elif typ == 'channel_dim':
+                        axis = 1
                     else:
-                        self.h[nid] *= v
-            elif n_ltype == '-':
-                vs = self.prevars(n)
-                assert(len(vs)==1)
-                self.h[nid] = -vs[0]
-            elif n_ltype == 'm':
-                vs = self.prevars(n)
-                assert(len(vs)==2)
-                self.h[nid] = F.mean_squared_error(vs[0], vs[1])
-            elif n_ltype == 's':
-                vs = self.prevars(n, sort=True)
-                assert(len(vs)==2)
-                self.h[nid] = F.softmax_cross_entropy(vs[0], vs[1])
-                self.acc[nid] = F.accuracy(vs[0], vs[1])
-            elif n_ltype == 'd':
-                vs = self.prevars(n)
-                assert(len(vs)==1)
-                self.h[nid] = F.dropout(vs[0], **filter_dic(n['opt'], filt=['ratio']))
-            elif n_ltype == 'e':
-                # experience replay やってきたサンプルを (リストself.l[nid]に) 溜め込む。そして、同じ数だけランダムに吐き出す。
-                # Variableのitem assignmentが無いようなので、以下の「サンプル」は「ミニバッチ」に読み替えて実装することとする。
-                vs = self.prevars(n)
-                assert(len(vs)==1)
-                mem = self.l[nid]
-                insiz = 1 # vs[0].data.shape[0] # 入ってきたサンプル数
-                maxsiz = n['opt']['size'] # 溜め込む最大サンプル数
-                nowsiz = len(mem) # 現在溜め込んでるサンプル数
-                rest = maxsiz - nowsiz
-                if rest > 0: mem += [vs[0]]
-                if rest < insiz:
-                    # memに溜め込まれているサンプルをランダムに上書きする
-                    mem[np.random.randint(maxsiz)] = vs[0]
-                self.h[nid] = mem[np.random.randint(len(mem))] # memからランダムにinsiz個のサンプルを吐き出す
-            elif n_ltype == 'v': # value
-                typ = n['opt']['type'] if 'type' in n['opt'] else 'np.float32'
-                self.h[nid] = Variable(np.array([n['opt']['value']]*self.bs, dtype=np.dtype(typ)))
-                # ary = np.array([n['opt']['value']]*self.bs)
-                # if ary.dtype in ['int64', 'int']:
-                #     ary = ary.astype(np.int32)
-                # elif ary.dtype in ['float64', 'float']:
-                #     ary = ary.astype(np.float32)                
-                # self.h[nid] = Variable(ary)
-            elif n_ltype == 'T': # transpose (last 2 dim) それ以外やりたいなら F.transpose でやって
-                vs = self.prevars(n)
-                assert(len(vs)==1)
-                nd = vs[0].data.ndim
-                self.h[nid] = F.transpose(vs[0], axes=list(np.arange(nd-2))+[nd-1, nd-2])
-                # self.h[nid] = F.transpose(vs[0], **filter_dic(n['opt'], filt=['axes']))
-            elif n_ltype == 'o': # 任意の層
-                vs = self.prevars(n, sort=True)
-                self.h[nid] = eval(n['opt']['func'])(*vs, **filter_dic(n['opt'], omit=['act','func'])) 
-                # print(self.update_cnt,'calculated! shape=',self.h[nid].data.shape)
+                        raise ValueError
+                    self.h[nid] = F.concat(vs, axis=axis)
+                elif n_ltype in ['+', '*']:
+                    vs = self.prevars(n)
+                    self.h[nid] = 0
+                    for v in vs:
+                        if n_ltype == '+':
+                            self.h[nid] += v
+                        else:
+                            self.h[nid] *= v
+                elif n_ltype == '-':
+                    vs = self.prevars(n)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = -vs[0]
+                elif n_ltype == 'm':
+                    vs = self.prevars(n)
+                    assert len(vs)==2, '2 args are expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = F.mean_squared_error(vs[0], vs[1])
+                elif n_ltype == 's':
+                    vs = self.prevars(n, sort=True)
+                    assert len(vs)==2, '2 args are expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = F.softmax_cross_entropy(vs[0], vs[1])
+                    self.acc[nid] = F.accuracy(vs[0], vs[1])
+                elif n_ltype == 'd':
+                    vs = self.prevars(n)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    self.h[nid] = F.dropout(vs[0], **filter_dic(n['opt'], filt=['ratio']))
+                elif n_ltype == 'e':
+                    # experience replay やってきたサンプルを (リストself.l[nid]に) 溜め込む。そして、同じ数だけランダムに吐き出す。
+                    # Variableのitem assignmentが無いようなので、以下の「サンプル」は「ミニバッチ」に読み替えて実装することとする。
+                    vs = self.prevars(n)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    mem = self.l[nid]
+                    insiz = 1 # vs[0].data.shape[0] # 入ってきたサンプル数
+                    maxsiz = n['opt']['size'] # 溜め込む最大サンプル数
+                    nowsiz = len(mem) # 現在溜め込んでるサンプル数
+                    rest = maxsiz - nowsiz
+                    if rest > 0: mem += [vs[0]]
+                    if rest < insiz:
+                        # memに溜め込まれているサンプルをランダムに上書きする
+                        mem[np.random.randint(maxsiz)] = vs[0]
+                    self.h[nid] = mem[np.random.randint(len(mem))] # memからランダムにinsiz個のサンプルを吐き出す
+                elif n_ltype == 'v': # value
+                    typ = n['opt']['type'] if 'type' in n['opt'] else 'np.float32'
+                    self.h[nid] = Variable(np.array([n['opt']['value']]*self.bs, dtype=np.dtype(typ)))
+                    # ary = np.array([n['opt']['value']]*self.bs)
+                    # if ary.dtype in ['int64', 'int']:
+                    #     ary = ary.astype(np.int32)
+                    # elif ary.dtype in ['float64', 'float']:
+                    #     ary = ary.astype(np.float32)                
+                    # self.h[nid] = Variable(ary)
+                elif n_ltype == 'T': # transpose (last 2 dim) それ以外やりたいなら F.transpose でやって
+                    vs = self.prevars(n)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    nd = vs[0].data.ndim
+                    self.h[nid] = F.transpose(vs[0], axes=list(np.arange(nd-2))+[nd-1, nd-2])
+                    # self.h[nid] = F.transpose(vs[0], **filter_dic(n['opt'], filt=['axes']))
+                elif n_ltype == 'o': # 任意の層
+                    vs = self.prevars(n, sort=True)
+                    self.h[nid] = eval(n['opt']['func'])(*vs, **filter_dic(n['opt'], omit=['act','func'])) 
+                    # print(self.update_cnt,'calculated! shape=',self.h[nid].data.shape)
 
-            # あとは活性化
-            a = n['opt']['act']
-            if a == 'relu':
-                self.h[nid] = F.relu(self.h[nid])
-            elif a in ['sigm', 'sigmoid']:
-                self.h[nid] = F.sigmoid(self.h[nid])
-            elif a == 'elu':
-                self.h[nid] = F.elu(self.h[nid])
-            elif a in ['l_relu', 'leaky_relu']:
-                self.h[nid] = F.leaky_relu(self.h[nid])
-            elif a == 'tanh':
-                self.h[nid] = F.tanh(self.h[nid])
-            elif a in ['id', 'identity']:
-                pass
-            else:
-                self.h[nid] = eval(a)(self.h[nid]) # 任意の活性化関数を使える
-            # print('nid ==',nid,'self.h[nid].data.shape ==',self.h[nid].data.shape)
+                # あとは活性化
+                a = n['opt']['act']
+                if a == 'relu':
+                    self.h[nid] = F.relu(self.h[nid])
+                elif a in ['sigm', 'sigmoid']:
+                    self.h[nid] = F.sigmoid(self.h[nid])
+                elif a == 'elu':
+                    self.h[nid] = F.elu(self.h[nid])
+                elif a in ['l_relu', 'leaky_relu']:
+                    self.h[nid] = F.leaky_relu(self.h[nid])
+                elif a == 'tanh':
+                    self.h[nid] = F.tanh(self.h[nid])
+                elif a in ['id', 'identity']:
+                    pass
+                else:
+                    self.h[nid] = eval(a)(self.h[nid]) # 任意の活性化関数を使える
+            except:
+                self.err_info[nid] = get_error_message()
+                del self.h[nid] # 前回の情報が残りっぱなしになるのを防ぐ
+
     def prevars(self, n, sort=False):
         vs = []
         for i in n['from']:
@@ -251,26 +292,29 @@ class nnmdl:
             return [v[1] for v in vs]
         return vs
     def update(self):
-        self.update_cnt += 1
-        self() # とりあえず順計算
-        # ロスを計算
-        self.loss = [0] * self.num_of_opt
-        for i in range(self.num_of_opt):
-            if not eval(self.net_info['cond'][i])(self.update_cnt): continue # conditionが合致してるかチェック
-            for j in self.lossidx[i]: # まずはlossを計算（足し合わせ）accfracも計算
-                self.loss[i] += self.h[j]
-                if j in self.acc: self.accfrac[i] += np.array([self.acc[j].data, 1])
-            if isinstance(self.loss[i], Variable) and self.opt[i] is not None:
-                # あとは逆伝播 (TODO: loss指定が前と同じならわざわざ逆伝播し直す必要はないはず。)
-                for j in range(self.num_of_opt):
-                    if self.opt[j] is not None: self.optchain[j].cleargrads() # TODO: 一体どの範囲をcleargradsすれば十分なのかはよくわかっていない。毎回全部やっとくか、て感じになってる
-                self.loss[i].grad = np.ones(self.loss[i].shape, dtype=np.float32)
-                self.loss[i].backward()
-                self.opt[i].update()
-                self.lossfrac[i] += np.array([np.sum(self.loss[i].data), 1])
-        if self.update_cnt % self.aveintvl == 0:
-            self.aveloss = self.get_aveloss(clear=True)
-            self.aveacc = self.get_aveacc(clear=True)
+        try:
+            self() # とりあえず順計算
+            # ロスを計算
+            self.loss = [0] * self.num_of_opt
+            for i in range(self.num_of_opt):
+                if not eval(self.net_info['cond'][i])(self.update_cnt): continue # conditionが合致してるかチェック
+                for j in self.lossidx[i]: # まずはlossを計算（足し合わせ）accfracも計算
+                    self.loss[i] += self.h[j]
+                    if j in self.acc: self.accfrac[i] += np.array([self.acc[j].data, 1])
+                if isinstance(self.loss[i], Variable) and self.opt[i] is not None:
+                    # あとは逆伝播 (TODO: loss指定が前と同じならわざわざ逆伝播し直す必要はないはず。)
+                    for j in range(self.num_of_opt):
+                        if self.opt[j] is not None: self.optchain[j].cleargrads() # TODO: 一体どの範囲をcleargradsすれば十分なのかはよくわかっていない。毎回全部やっとくか、て感じになってる
+                    self.loss[i].grad = np.ones(self.loss[i].shape, dtype=np.float32)
+                    self.loss[i].backward()
+                    self.opt[i].update()
+                    self.lossfrac[i] += np.array([np.sum(self.loss[i].data), 1])
+            self.update_cnt += 1
+            if self.update_cnt % self.aveintvl == 0:
+                self.aveloss = self.get_aveloss(clear=True)
+                self.aveacc = self.get_aveacc(clear=True)
+        except:
+            self.err_info['general'] = get_error_message()
     def get_aveloss(self, clear=False):
         ret = [None for i in range(self.num_of_opt)]
         for i in range(self.num_of_opt):
@@ -343,10 +387,8 @@ class Sampler:
         np.random.set_state(_) # 復元
         return ret
 
-class ComputationThreadManager():
-# class ComputationThreadManager(threading.Thread):
+class ComputationThreadManager(): # これは一度しかインスタンス化されない。
     def __init__(self):
-        # threading.Thread.__init__(self)
         self.start_event = threading.Event() # 計算を開始させるかのフラグ
         self.stop_event = threading.Event() # 計算を停止させるかのフラグ
         self.exit_event = threading.Event() # スレッドを終了させるイベント
@@ -356,7 +398,6 @@ class ComputationThreadManager():
     def target(self):
         """別スレッド"""
         self.computing = False
-        # self.net_info = None
         if self.exit_event.is_set(): self.exit_event.clear()
         while not self.exit_event.is_set(): # 別スレッドのメインループ
             if self.start_event.is_set(): # 学習開始時の処理
@@ -364,7 +405,6 @@ class ComputationThreadManager():
                 self.computing = True
                 # 計算のための補助情報を self.net_info から計算する
                 # トポロジカルソート順、サンプラーのロード、LinkやChain作成など
-                # Chain作成
                 self.mdl = nnmdl(self.net_info)
             if self.update_net_event.is_set(): # ネットワークの動的更新
                 self.update_net_event.clear()
@@ -377,43 +417,56 @@ class ComputationThreadManager():
             else: # 学習してない時の処理
                 time.sleep(0.1)
         self.exit_event.clear()
-        self.mdl = None
+        # self.mdl = None
         print('[end of thread]')
-        # ここで別スレッド終了
+        """別スレッド終了"""
     def start_computing(self, net_info):
-        self.net_info = net_info
-        self.thread = threading.Thread(target = self.target) # スレッド作成（thread can only be started onceなので毎回インスタンス化が必要）        
-        self.thread.start() # スレッド開始！
-        self.start_event.set()
-        print('[computation thread started.]')
+        try:
+            self.net_info = net_info
+            self.thread = threading.Thread(target = self.target) # スレッド作成（thread can only be started onceなので毎回インスタンス化が必要）        
+            self.thread.start() # スレッド開始！
+            self.start_event.set()
+            return '[computation thread started.]'
+        except:
+            print('[main thread] error')
+            return get_error_message() # 学習用スレッドで生じたエラーはここには届かない！！！▲▲▲
     def stop_computing(self):
-        self.stop_event.set()
-        self.exit_event.set()
-        self.thread.join()    #スレッドが停止するのを待つ
-        print('[computation thread stopped.]')
+        try:
+            self.stop_event.set()
+            self.exit_event.set()
+            self.thread.join()    #スレッドが停止するのを待つ
+            return '[computation thread stopped.]'
+        except:
+            print('[main thread] error')
+            return get_error_message()
     def update_net(self, net_info): # 学習中の、ネットワークの動的な更新！
-        self.net_info_new = net_info
-        self.update_net_event_set()
-        print('[update_net_event set.]')
-    def get_info(self, params):
+        try:
+            self.net_info_new = net_info
+            self.update_net_event.set()
+            return '[update_net_event set.]'
+        except:
+            print('[main thread] error')
+            return get_error_message()
+    def get_info(self, params): # これ、別スレッド内で情報収集させた方が、バッチ同期とれて良いのでは？ TODO
         typ = params['type']
         dic = {}
         if self.mdl is not None:
             if typ=='shape':
                 for k,v in self.mdl.h.items():
-                    dic[k] = v.data.shape
+                    dic[k] = v.data.shape if isinstance(v, Variable) and v.data is not None else ()
             elif typ=='weight_summary':
                 for k,v in self.mdl.l.items():
                     rec = {}
                     if hasattr(v, 'W') and isinstance(v.W, Variable) and v.W.data is not None:
                         rec['W_shape'] = v.W.data.shape
                         rec['W_norm'] = float_if_float(np.linalg.norm(v.W.data))
-                        W_pre = np.dot(v.W.data.T, v.W.data)
-                        rec['W_pre_maxovl'] = float_if_float(cov2maxovl(W_pre))
-                        rec['W_pre_minnorm'] = float_if_float(cov2minnorm(W_pre))
-                        W_post = np.dot(v.W.data, v.W.data.T)
-                        rec['W_post_maxovl'] = float_if_float(cov2maxovl(W_post))
-                        rec['W_post_minnorm'] = float_if_float(cov2minnorm(W_post))
+                        if v.W.data.ndim==2:
+                            W_pre = np.dot(v.W.data.T, v.W.data)
+                            rec['W_pre_maxovl'] = float_if_float(cov2maxovl(W_pre))
+                            rec['W_pre_minnorm'] = float_if_float(cov2minnorm(W_pre))
+                            W_post = np.dot(v.W.data, v.W.data.T)
+                            rec['W_post_maxovl'] = float_if_float(cov2maxovl(W_post))
+                            rec['W_post_minnorm'] = float_if_float(cov2minnorm(W_post))
                     if hasattr(v, 'b') and isinstance(v.b, Variable):
                         rec['b_shape'] = v.b.data.shape
                         rec['b_norm'] = float_if_float(np.linalg.norm(v.b.data))
@@ -423,28 +476,27 @@ class ComputationThreadManager():
             elif typ=='image_sample':
                 # image型なノードすべてから現在のイメージを送り返す ←image型に限らずにした！
                 for k,v in self.mdl.h.items():
-                    if np.ndim(v.data) >= 1: # もともと ==4 にしてた
-                        dic[k] = [v.data[0].tolist()]
-                        if v.data.shape[0]>1: # もう一個送ってやる
-                            dic[k].append(v.data[1].tolist())
+                    if isinstance(v, Variable) and v.data is not None:
+                        if v.data.ndim >= 1: # もともと ==4 にしてた
+                            dic[k] = [v.data[0].tolist()]
+                            if v.data.shape[0]>1: # もう一個送ってやる
+                                dic[k].append(v.data[1].tolist())
+                        else:
+                            dic[k] = [v.data.tolist()]
             elif typ=='activation_detail':
                 # nid番のノードの現在のactivationを丸ごと送り返す
                 v = self.mdl.h[params['id']]
-                if np.ndim(v.data)==4:
-                    dic = v.data.tolist()
-                else:
-                    dic = v.data.tolist()
-
-
-        ret = json.dumps(dic)
-        return ret
+                dic = v.data.tolist() if isinstance(v, Variable) and v.data is not None else []
+            elif typ=='err': # 学習中に生じたエラーを取得
+                dic = self.mdl.err_info
+                self.mdl.err_info = {} # 取得されたので、エラーをクリアする
+        return json.dumps(dic)
     def exec(self, com):
         try:
             exec(com)
             ret = 'executed successfully'
         except:
-            ex, ms, tb = sys.exc_info()
-            ret = '[Error]\n' + str(ex) + '\n' + str(ms)
+            ret = get_error_message()
         return ret
 
 
@@ -480,20 +532,20 @@ class MyHandler(BaseHTTPRequestHandler):
 
         com = jsonData['command']
         if com == 'set':
-            if ctm.thread is None or (not ctm.thread.is_alive()):
-                ctm.start_computing(net_info = jsonData['data'])
-            else: # 学習中のネットワークの動的な更新！
-                ctm.update_net(net_info = jsonData['data'])
+            if ctm.thread is None or (not ctm.thread.is_alive()): # 学習用スレッドが生きてない場合は・・・
+                body = ctm.start_computing(net_info = jsonData['data']) # 新規の学習開始
+            else: # 学習用スレッドが生きている場合は、学習中のネットワークの動的な更新！
+                body = ctm.update_net(net_info = jsonData['data'])
         elif com == 'getinfo':
             body = ctm.get_info(jsonData['params']) # 'data'でもいいんでは 中身 typeだけだし
         elif com == 'exec': # 文字通りexecする
             body = ctm.exec(jsonData['data']) # 文字列そのまま送って
         elif com == 'stop':
-            ctm.stop_computing()
+            body = ctm.stop_computing()
         elif com == 'shutdown':
-            if ctm.thread is not None and ctm.thread.is_alive(): ctm.stop_computing()
+            if ctm.thread is not None and ctm.thread.is_alive(): ctm.stop_computing() # 学習用スレッド生きてるなら殺す
             global httpd
-            threading.Thread(target=httpd.shutdown).start() # 他のスレッドからじゃないと殺せないようだ。
+            threading.Thread(target=httpd.shutdown).start() # サーバーを落とす。他のスレッドからじゃないと落とせないようだ。
         else:
             body = 'unknown command. computation thread is '+('alive' if ctm.thread.is_alive() else 'dead')
         body = body.encode('utf-8')

@@ -16,7 +16,7 @@
 	var borderWidth = 1;
 	var rets;
 	var learningFlg = false;
-	var timer_draw, timer_getInfo_weight_summary, timer_getInfo_learning_status, timer_drawChart, timer_getInfo_image_sample, timer_getInfo_shape;
+	var timer_draw, timer_getInfo_weight_summary, timer_getInfo_learning_status, timer_drawChart, timer_getInfo_image_sample, timer_getInfo_shape, timer_getInfo_err;
 	var chartData;
 
 	//var canvas2, ctx2;
@@ -366,6 +366,7 @@
 	function draw(){
     	if (canvas.getContext){
     		ctx.fillStyle = '#FFFFFF';
+    		if (learningFlg) ctx.fillStyle = '#dddddd';
     		ctx.fillRect(0, 0, canvas.width, canvas.height);
     		ctx.fillStyle = '#3399FF';
     		for(var i in edge){
@@ -442,14 +443,22 @@
     				var msg = '';
     				if (typeof ws.W_norm !== 'undefined'){
     					msg += '|W|=' + ws.W_norm.toFixed(3);
-    					msg += ' (M ' + ws.W_pre_maxovl.toFixed(2) + ', n ' + ws.W_pre_minnorm.toFixed(1) + ' / ';
-    					msg += 'M ' + ws.W_post_maxovl.toFixed(2) + ', n ' + ws.W_post_minnorm.toFixed(1) + ')';
+    					msg += ' (' + ws.W_shape + ')';
     					msg += '\n';
+    					if (document.getElementById('cb_weight_singularity').checked && typeof ws.W_pre_maxovl !== 'undefined'){
+    						msg += ' (M ' + ws.W_pre_maxovl.toFixed(2) + ', n ' + ws.W_pre_minnorm.toFixed(1) + ' / ';
+    						msg += 'M ' + ws.W_post_maxovl.toFixed(2) + ', n ' + ws.W_post_minnorm.toFixed(1) + ')';
+    						msg += '\n';
+    					}
     				}
-    				if (typeof ws.b_norm !== 'undefined') msg += '|b|=' + ws.b_norm.toFixed(3) + '\n';
+    				if (typeof ws.b_norm !== 'undefined'){
+    					msg += '|b|=' + ws.b_norm.toFixed(3) + ' (' + ws.b_shape + ')\n';
+    				}
     				if (msg != ''){
-	    				var cxy = centerOfEdge(n.from[0]); //流入辺(1本のはず)の中央の座標を取得。
-						fillText2(msg, cxy[0], cxy[1]);
+    					if (n.from.length==1){
+		    				var cxy = centerOfEdge(n.from[0]); //流入辺(1本のはず)の中央の座標を取得。
+							fillText2(msg, cxy[0], cxy[1]);
+						}
 					}
     			}
     			//shape情報も描画しよう
@@ -458,6 +467,14 @@
 	    			ctx.textBaseline = 'middle';    				
     				ctx.fillText('('+rets.shape[i]+')', n.x+n.w/2, n.y+n.h/2);
     			}
+    			//エラー情報も赤字で表示
+    			if (typeof rets.err !== 'undefined' && typeof rets.err[i] !== 'undefined'){
+	    			ctx.textAlign = 'left';
+	    			ctx.textBaseline = 'middle';   
+	    			ctx.fillStyle = '#ff0000'; 				
+    				fillText2(rets.err[i], n.x+n.w/2, n.y+n.h/2);
+    			}
+
     		}
     		//learning_status情報も画面左上に
     		if (typeof rets.learning_status !== 'undefined' && document.getElementById('cb_learning_status').checked){
@@ -553,9 +570,9 @@
 			case 'f':
 				node[id].opt = {act:'relu', out_channel:10}; break;
 			case 'c':
-				node[id].opt = {act:'relu', out_channel:10, ksize:[1], stride:[1], pad:[1]}; break;
+				node[id].opt = {act:'relu', out_channel:10, ksize:3, stride:2, pad:1}; break;
 			case 'p':
-				node[id].opt = {act:'id', type:'max', ksize:[1], stride:[1], pad:[1]}; break;
+				node[id].opt = {act:'id', type:'max', ksize:3, stride:2, pad:1}; break;
 			case 'b':
 				node[id].opt = {act:'id', size:10}; break;
 			case 'e':
@@ -630,6 +647,7 @@
 			timer_getInfo_learning_status = setInterval(function(){getInfo('learning_status');},1000);
 			timer_drawChart = setInterval(function(){drawChart();},20000); 
 			timer_getInfo_image_sample = setInterval(function(){getInfo('image_sample');},5000);
+			timer_getInfo_err = setInterval(function(){getInfo('err');},1000);
 			document.getElementById("b_net_toggle").value="Quit Learning";
 			chartData = {};
 			learningFlg = true;
@@ -640,6 +658,7 @@
 			clearInterval(timer_getInfo_learning_status);
 			clearInterval(timer_drawChart);
 			clearInterval(timer_getInfo_image_sample);
+			clearInterval(timer_getInfo_err);
 			document.getElementById("b_net_toggle").value="Start Learning";
 			learningFlg = false;
 		}
@@ -663,16 +682,16 @@
 
 	function sendNetworkInfoToServer(){
 		refreshTBVars();
-		sendToServer({'command':'set', 'data':{'node':node, 'edge':edge, 'opti':opti, 'settings':settings, 'optiee':optiee, 'loss':loss, 'cond':cond}}, undefined);
+		sendToServer({'command':'set', 'data':{'node':node, 'edge':edge, 'opti':opti, 'settings':settings, 'optiee':optiee, 'loss':loss, 'cond':cond}}, null, true);
 	}
 	function stopServerLearning(){
-		sendToServer({'command':'stop'}, undefined);	
+		sendToServer({'command':'stop'}, null, true);	
 	}
 	function shutdownServer(){
-		sendToServer({'command':'shutdown'}, undefined);	
+		sendToServer({'command':'shutdown'}, null, false);	
 	}
 	function getInfo(type){
-		sendToServer({'command':'getinfo', 'params':{'type':type}}, type);
+		sendToServer({'command':'getinfo', 'params':{'type':type}}, type, false);
 	}
 	function getActivationDetail(id){
 		if (typeof id === 'undefined'){
@@ -680,30 +699,31 @@
 			if (id === -1) return;
 		}
 		var type = 'activation_detail';
-		sendToServer({'command':'getinfo', 'params':{'type':type, 'id':id}}, type);
+		sendToServer({'command':'getinfo', 'params':{'type':type, 'id':id}}, type, false);
 	}
 	function execCode(){
-		sendToServer({'command':'exec', 'data':document.getElementById('tb_code').value}, null);
+		sendToServer({'command':'exec', 'data':document.getElementById('tb_code').value}, null, true);
 	}
-	function sendToServer(data, kwd){ //サーバー側に data <JSON object> を送りつける
+	function sendToServer(data, kwd, showflg){ //サーバー側に data <JSON object> を送りつける
 		//data['command'] <string> にコマンドを表す文字列を入れて送りつける
-		//kwd によって、返答(JSON文字列でかえってくる)の処理が変わる
-		//  undefinedの場合はスルーする。nullの場合はダイアログに表示。文字列の場合は、global変数 rets[kwd] にJSONオブジェクトの形で格納する。
+		//kwd によって、返答(文字列(JSON文字列であることが多い)でかえってくる)の処理が変わる
+		//  nullの場合はスルーする。文字列の場合は、global変数 rets[kwd] にJSONオブジェクトの形で格納する。
+		//showflg によって、返答をダイアログ表示するか否かが決まる
 		var xmlHttpRequest = new XMLHttpRequest();
 		xmlHttpRequest.onreadystatechange = function(){
 		    var READYSTATE_COMPLETED = 4;
 		    var HTTP_STATUS_OK = 200;
 		    if( this.readyState == READYSTATE_COMPLETED){
 		    	if (this.status == HTTP_STATUS_OK ){
-			    	if (kwd === null) alert( this.responseText ); // レスポンスの表示
-			    	else if (typeof kwd !== 'undefined') rets[kwd] = JSON.parse(this.responseText);
+			    	if (kwd !== null) rets[kwd] = JSON.parse(this.responseText);
+			    	if (showflg) alert( this.responseText ); // レスポンスの表示
 			    	//通信が生じたタイミングでchartDataも更新するよ
 			    	if (kwd=='learning_status'){ //中身は全部chartDataに追加する（数値じゃないエントリは null にする）
 			    		for(var i in rets[kwd]){
 			    			if (['update_cnt','aveloss','aveacc'].indexOf(i) >= 0){
 			    				var d = rets[kwd][i];
 			    				if (isArray(d)) d = d[0]; //先頭要素だけとする。TODO
-			    				if (typeof d != 'number' || !isFinite(d)) d = 0.0; //nullやundefにするとgoogle chart apiでエラーになる・・
+			    				if (typeof d != 'number' || !isFinite(d)) d = 0.0; //nullやundefにするとgoogle chart apiでエラーになる 欠損値はどうやって指定すればいいのか？ TODO・・
 			    				if (chartData[i]===undefined){
 			    					chartData[i] = [d];
 			    				}else{
@@ -785,16 +805,17 @@
   	<canvas id="canvas_main" width="800" height="600"></canvas>
 	<form name="form1">
 	Show:
-	<input id="cb_weight_summary" type="checkbox" checked="checked"/><label for="cb_weight_summary">weight_summary</label>
 	<input id="cb_shape" type="checkbox" checked="checked"/><label for="cb_shape">shape</label>
 	<input id="cb_learning_status" type="checkbox" checked="checked"/><label for="cb_learning_status">learning_status</label>
 	<input id="cb_image_sample" type="checkbox" checked="checked"/><label for="cb_image_sample">image_sample</label>
+	<input id="cb_weight_summary" type="checkbox" checked="checked"/><label for="cb_weight_summary">weight_summary</label>
+	<input id="cb_weight_singularity" type="checkbox"/><label for="cb_weight_singularity">weight_singularity</label>
 	<br>
 	Options: <input type="text" id="tb_opt" value="" size="80" onkeydown="textboxSubmitCheck();">
 	<input type="button" id="b_opt" value="Update" onclick="updateOpt();"><br>
 	<input type="button" id="b_net_toggle" value="Start Learning" onclick="setNet();"><br>
-<!--
 	<input type="button" id="b_send_net" value="sendNetworkInfoToServer" onclick="sendNetworkInfoToServer();"><br>	
+<!--
 	<input type="button" id="b_checkshape" value="型チェック" onclick="getInfo('shape');"><br>	
 	<input type="button" id="b_checkweight" value="重みチェック" onclick="getInfo('weight_summary');"><br>	
 	<input type="button" id="b_checklearn" value="学習状況チェック" onclick="getInfo('learning_status');"><br>	
