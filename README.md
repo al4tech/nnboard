@@ -113,9 +113,9 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 * `server.py` 起動時に `Address already in use` などと表示されて起動できない。
 
     * 以下を確かめてみてください：
-
-    * `server.py` がバックグラウンドで起動したままになっている。 → `index.html` を（手動で）開いて、 `Shutdown Server` ボタンを押せば終了できます。
-
+    
+    * `server.py` がバックグラウンドで起動したままになっている。 → `index.html` を（手動で）開いて、 `Shutdown Server` ボタンを押せば終了できます。
+    
     * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
 
         * 現状 `server.py`　と `index.html` の中にポート番号がハードコードされてますが、いずれ修正可能にしたいと思います
