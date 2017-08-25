@@ -114,7 +114,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
     * 以下を確かめてみてください：
 
-    * `server.py` が前回から起動したままになっている。 → `index.html` を（手動で）開いてから、下の手順でシャットダウンしてください。
+    * `server.py` がバックグラウンドで起動したままになっている。 → `index.html` を（手動で）開いて、 `Shutdown Server` ボタンを押せば終了できます。
 
     * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
 
