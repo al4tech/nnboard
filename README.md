@@ -22,7 +22,9 @@ python server.py
 
 ### 終了
 
-`index.html` の最下部にある `Shutdown Server` ボタンを押してください。すると、 `server.py` がシャットダウンします。
+`server.py` を Ctrl-C で終了してください。
+
+`index.html` の最下部にある `Shutdown Server` ボタンを押しても、 `server.py` が終了します。
 
 ### 作業状態の保存と読み込み
 
