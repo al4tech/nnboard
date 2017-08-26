@@ -802,6 +802,9 @@
   </head>
   <body onload="init();">
   	<!-- <script src="http://localhost:1337/socket.io/socket.io.js"></script> --> <!--サーバーのアドレス-->
+    Load Canvas: <input type="file" id="upload">
+    <a id="download" href="#" download="net.json" onclick="netDownload();">Download Canvas</a><br>
+	<hr>
   	<canvas id="canvas_main" width="800" height="600"></canvas>
 	<form name="form1">
 	Show:
@@ -813,14 +816,16 @@
 	<br>
 	Options: <input type="text" id="tb_opt" value="" size="80" onkeydown="textboxSubmitCheck();">
 	<input type="button" id="b_opt" value="Update" onclick="updateOpt();"><br>
-	<input type="button" id="b_net_toggle" value="Start Learning" onclick="setNet();"><br>
-	<input type="button" id="b_send_net" value="sendNetworkInfoToServer" onclick="sendNetworkInfoToServer();"><br>	
+	training settings: <input type="text" id="tb_settings" size="80" value='{"bs":100, "aveintvl":100}'><br>
+	<input type="button" id="b_net_toggle" value="Start Learning" onclick="setNet();""
+	style="font-weight:bold; color:#3366FF; font-size:1.4em;"><br>
+	<input type="button" id="b_send_net" value="sendNetworkInfoToServer" onclick="sendNetworkInfoToServer();"
+	style="color:#666666;"> (Experimental) <br>	
 <!--
 	<input type="button" id="b_checkshape" value="型チェック" onclick="getInfo('shape');"><br>	
 	<input type="button" id="b_checkweight" value="重みチェック" onclick="getInfo('weight_summary');"><br>	
 	<input type="button" id="b_checklearn" value="学習状況チェック" onclick="getInfo('learning_status');"><br>	
 -->
-	training settings: <input type="text" id="tb_settings" size="80" value='{"bs":100, "aveintvl":100}'><br>
 	<hr>
 	optimizer 0: <input type="text" id="tb_opti0" size="30" value="optimizers.Adam()">
 	optimizee: #<input type="text" id="tb_optiee0" size="1" value="0">
@@ -847,9 +852,6 @@
 	<input type="button" id="b_chart" value="Update graph manually" onclick="drawChart();"><br>	
 	<div id="curve_chart" style="width: 900px; height: 500px"></div>
 	</form>
-	<hr>
-    <a id="download" href="#" download="net.json" onclick="netDownload();">Download Canvas</a><br>
-    Load Canvas: <input type="file" id="upload"><br>
     <hr>
 	<input type="button" id="b_code" value="Shutdown Server" onclick="shutdownServer();"><br>    
     <!-- msgbox -->
