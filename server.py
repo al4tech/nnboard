@@ -561,14 +561,14 @@ import webbrowser, os
 webbrowser.open('file:///' + os.path.abspath(".") + '/index.html')
 
 parser = argparse.ArgumentParser(description='server')
-# parser.add_argument('-p', '--password',
-#                default='', help='password to connect to sql')
+parser.add_argument('-p', '--port',
+               default=8000, help='port number')
 commandargs = parser.parse_args()
 
 
 ctm = ComputationThreadManager() # 計算用スレッドの開始
 host = 'localhost'
-port = 8000
+port = int(commandargs.port)
 httpd = HTTPServer((host, port), MyHandler)
 print('serving at port', port)
 httpd.serve_forever()

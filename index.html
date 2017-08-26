@@ -722,12 +722,17 @@
 			    		for(var i in rets[kwd]){
 			    			if (['update_cnt','aveloss','aveacc'].indexOf(i) >= 0){
 			    				var d = rets[kwd][i];
-			    				if (isArray(d)) d = d[0]; //先頭要素だけとする。TODO
-			    				if (typeof d != 'number' || !isFinite(d)) d = 0.0; //nullやundefにするとgoogle chart apiでエラーになる 欠損値はどうやって指定すればいいのか？ TODO・・
-			    				if (chartData[i]===undefined){
-			    					chartData[i] = [d];
-			    				}else{
-			    					chartData[i].push(d);
+			    				if (!isArray(d)) d = [d];
+			    				for(var j=0;j<d.length;j++){
+			    					var val = d[j];
+			    					if (typeof val != 'number' || !isFinite(val)) val = 0.0;
+			    					//欠損値はどうやって指定すればいいのか？ null や undef だと google chart api がエラー出る TODO・・
+			    					var key = '' + i + '' + (d.length>1 ? j : ''); //長さ2以上の場合は　aveloss0 などのようになる
+				    				if (typeof chartData[key] === 'undefined'){
+				    					chartData[key] = [val];
+				    				}else{
+				    					chartData[key].push(val);
+				    				}			    					
 			    				}
 			    			}
 			    		}
@@ -741,7 +746,8 @@
 			    }
 		    }
 		}
-		xmlHttpRequest.open( 'POST', 'http://localhost:8000/' );
+		//xmlHttpRequest.open( 'POST', 'http://localhost:8000/' );
+		xmlHttpRequest.open( 'POST', document.getElementById("tb_addr").value );
 		xmlHttpRequest.setRequestHeader( 'Content-Type', 'text/plain' );
 		xmlHttpRequest.send( JSON.stringify( data ) ); //データ送信
 	}
@@ -853,6 +859,7 @@
 	<div id="curve_chart" style="width: 900px; height: 500px"></div>
 	</form>
     <hr>
+	Address of Server: <input type="input" id="tb_addr" value="http://localhost:8000""><br>    
 	<input type="button" id="b_code" value="Shutdown Server" onclick="shutdownServer();"><br>    
     <!-- msgbox -->
 	<div id="msgbox">
