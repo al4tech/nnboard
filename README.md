@@ -116,9 +116,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     
     * `server.py` がバックグラウンドで起動したままになっている。 → `index.html` を（手動で）開いて、 `Shutdown Server` ボタンを押せば終了できます。
     
-    * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → `server.py` が使用するポート番号を変更しましょう。
-
-        * 現状 `server.py`　と `index.html` の中にポート番号がハードコードされてますが、いずれ修正可能にしたいと思います
+    * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → 通信に使用するポート番号を変更しましょう。例えば、ポート 12345 番を使いたい場合は、サーバを `server.py -p 12345` で起動し、 `index.html` の最下部にある `Address of Server` を `http://localhost:12345` と変更してください。
 
 * テストエラー見たい
 
@@ -126,7 +124,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     
 * 学習中にネットワークいじったらどうなるの
 
-    * 現状、どうにもなりませんが、そのうち、ネットワークを学習中に動的にいじれるようにしたいと思っています。
+    * 現状、どうにもなりません。 ← 部分的に、ネットワークを学習中に動的にいじれるようにしました。ネットワークを変更してから、 `SendNetworkInfoToServer` ボタンを押すと、変更したことをサーバーの計算に反映できます。（link 層はいじれません）
 
 * `Start Learning` ボタンを押しても `Quit Learning` に変化しない
 
