@@ -269,6 +269,12 @@
 	function isArray(obj) {
     	return Object.prototype.toString.call(obj) === '[object Array]';
 	}
+	function allNull(ary){
+		for(var i=0;i<ary.length;i++){
+			if (ary[i] !== null) return false; 
+		}
+		return true;
+	}
 	function dist(x1, y1, x2, y2, tx, ty){
 		//ちょっと計算面倒なのでとりあえず中点での判定にしとく
 		var cx = (x1+x2)/2; var cy = (y1+y2)/2;
@@ -725,8 +731,8 @@
 			    				if (!isArray(d)) d = [d];
 			    				for(var j=0;j<d.length;j++){
 			    					var val = d[j];
-			    					if (typeof val != 'number' || !isFinite(val)) val = 0.0;
-			    					//欠損値はどうやって指定すればいいのか？ null や undef だと google chart api がエラー出る TODO・・
+			    					if (typeof val != 'number' || !isFinite(val)) val = null;//0.0;
+			    					//グラフの欠損値は全部 null とする
 			    					var key = '' + i + '' + (d.length>1 ? j : ''); //長さ2以上の場合は　aveloss0 などのようになる
 				    				if (typeof chartData[key] === 'undefined'){
 				    					chartData[key] = [val];
@@ -772,6 +778,8 @@
         }
         for(var j in chartData){
         	if (j !== 'update_cnt'){
+        		//系列 j が all null でないことを確かめてから (さもなくば google chart API がエラーを出す？)
+        		if (allNull(chartData[j])) continue;
         		ary[0].push(j);
         		for(var i=0;i<shortlen;i++){
         			ary[1+i].push(chartData[j][i*step]);
