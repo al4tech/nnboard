@@ -3,7 +3,7 @@ a GUI editor for neural network
 
 chainer 向けの GUI エディタです。
 
-![test](https://github.com/yos1up/nnboard/edit/master/nnboard_digest.gif)
+![](https://github.com/yos1up/nnboard/blob/master/nnboard_digest.gif)
 
 ## 動作環境
 * python 3.5.2 以降 （おそらく 3.5 以降なら動きます）
