@@ -492,12 +492,9 @@ class ComputationThreadManager(): # これは一度しかインスタンス化�
                 self.mdl.err_info = {} # 取得されたので、エラーをクリアする
         return json.dumps(dic)
     def exec(self, com):
-        try:
-            exec(com)
-            ret = 'executed successfully'
-        except:
-            ret = get_error_message()
-        return ret
+        exec(com) # エラー処理はこの外側で行います
+    def eval(self, com):
+        return eval(com) # エラー処理はこの外側で行います
 
 
 
@@ -539,7 +536,16 @@ class MyHandler(BaseHTTPRequestHandler):
         elif com == 'getinfo':
             body = ctm.get_info(jsonData['params']) # 'data'でもいいんでは 中身 typeだけだし
         elif com == 'exec': # 文字通りexecする
-            body = ctm.exec(jsonData['data']) # 文字列そのまま送って
+            try:
+                ctm.exec(jsonData['data'])
+                body = 'executed successfully'
+            except:
+                body = get_error_message()
+        elif com == 'eval': # 文字通りevalする
+            try:
+                body = json.dumps({'error':0, 'ret':str(ctm.eval(jsonData['data']))})
+            except:
+                body = json.dumps({'error':1, 'ret':get_error_message()})
         elif com == 'stop':
             body = ctm.stop_computing()
         elif com == 'shutdown':

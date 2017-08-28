@@ -253,7 +253,13 @@
 					document.body.style.cursor = 'default';
 				}
 			}
-		},false);    		
+		},false);
+		document.getElementById('sli_hp').addEventListener('input',function(e){
+			refreshHPValue();
+		},false);
+		document.getElementById('tb_hp').addEventListener('change',function(e){
+			resetSlider();
+		},false);			
 		timer_draw = setInterval(draw, 100);
 	}
     function netDownload() { //作業状態のダウンロード
@@ -553,7 +559,7 @@
 		if (mouse.sel.length===1 && node[mouse.sel[0]]!==undefined) return mouse.sel[0];
 		return -1;
 	}
-	function ord(char){
+	function ord(char){ //python リスペクト
 		return char.charCodeAt(0); 
 	}
 	function fillText2(text, x, y, w=null, lf=16){ //複数行に対応した版
@@ -651,7 +657,7 @@
 			timer_getInfo_weight_summary = setInterval(function(){getInfo('weight_summary');},1000); //引数付きのsetInterval
 			timer_getInfo_shape = setInterval(function(){getInfo('shape');},1000);
 			timer_getInfo_learning_status = setInterval(function(){getInfo('learning_status');},1000);
-			timer_drawChart = setInterval(function(){drawChart();},20000); 
+			timer_drawChart = setInterval(function(){drawChart();},1000); 
 			timer_getInfo_image_sample = setInterval(function(){getInfo('image_sample');},5000);
 			timer_getInfo_err = setInterval(function(){getInfo('err');},1000);
 			document.getElementById("b_net_toggle").value="Quit Learning";
@@ -685,7 +691,31 @@
 	}
 	//------------------------------------------------------
 
-
+	function valToSli(val){
+		if (val == 0) return 0.0;
+		else if (val < 0) return -valToSli(-val);
+		var logval = Math.min(Math.max(Math.log10(val), -5.0), 1.0); 
+		return (logval + 5.0) / 6;
+	}function sliToVal(sli){
+		if (Math.abs(sli) < 1e-8) return 0.0;
+		else if (sli < 0) return -sliToVal(-sli);
+		var normedsli = sli * 6 - 5.0;
+		return Math.pow(10.0, normedsli);
+	}
+	function refreshHPValue(){
+		var val = sliToVal(Number(document.getElementById('sli_hp').value));
+		document.getElementById('hp_value').innerHTML = '' + val.toFixed(6);
+		//値の変更をサーバーへも反映
+		execCode(document.getElementById('tb_hp').value + " = " + val, false);
+		//document.getElementById('sli_value').innerHTML = '' + Number(document.getElementById('sli_hp').value).toFixed(6);
+	}
+	function resetSlider(){
+		document.getElementById('sli_hp').disabled = true;
+		document.getElementById('hp_value').innerHTML = '';
+	}
+	function getHP(){
+		sendToServer({'command':'eval', 'data':document.getElementById('tb_hp').value}, 'hp', false);
+	}
 	function sendNetworkInfoToServer(){
 		refreshTBVars();
 		sendToServer({'command':'set', 'data':{'node':node, 'edge':edge, 'opti':opti, 'settings':settings, 'optiee':optiee, 'loss':loss, 'cond':cond}}, null, true);
@@ -707,8 +737,8 @@
 		var type = 'activation_detail';
 		sendToServer({'command':'getinfo', 'params':{'type':type, 'id':id}}, type, false);
 	}
-	function execCode(){
-		sendToServer({'command':'exec', 'data':document.getElementById('tb_code').value}, null, true);
+	function execCode(com, showDialog=true){
+		sendToServer({'command':'exec', 'data':com}, null, showDialog);
 	}
 	function sendToServer(data, kwd, showflg){ //サーバー側に data <JSON object> を送りつける
 		//data['command'] <string> にコマンドを表す文字列を入れて送りつける
@@ -742,10 +772,21 @@
 			    				}
 			    			}
 			    		}
-			    	}else if (kwd=='activation_detail'){ //帰ってきた詳細情報をポップアップする処理
+			    	}else if (kwd=='activation_detail'){ //返ってきた詳細情報をポップアップする処理
 			    		var id = data.params.id;
 			    		var n = node[id];
 			    		dialogInfo(rets[kwd], n.x-n.w/2, n.y+n.h/2);
+			    	}else if (kwd=='hp'){ //hpの値が返ってきた。 → hpスライダーの値を変更し、操作可能にする
+			    		if (rets[kwd]['error']===0){
+				    		var sli = document.getElementById('sli_hp');
+				    		sli.value = valToSli(+rets[kwd]['ret']); //スライダー値に変換して代入 (+は数値型への変換)
+				    		sli.disabled = false; //有効化
+				    		refreshHPValue(); //スライダー横の値の表示も更新
+				    		//ここですぐに hp の情報を回収してしまう
+				    		rets[kwd] = undefined;
+				    	} else{ //hp値取得時にエラー発生
+				    		alert( rets[kwd]['ret']);
+				    	}
 			    	}
 			    }else{ //通信エラー時にここにくる
 			    	setNet(active=false);
@@ -819,7 +860,7 @@
     Load Canvas: <input type="file" id="upload">
     <a id="download" href="#" download="net.json" onclick="netDownload();">Download Canvas</a><br>
 	<hr>
-  	<canvas id="canvas_main" width="800" height="600"></canvas>
+  	<canvas id="canvas_main" width="1000" height="600"></canvas>
 	<form name="form1">
 	Show:
 	<input id="cb_shape" type="checkbox" checked="checked"/><label for="cb_shape">shape</label>
@@ -858,8 +899,15 @@
 	loss: #<input type="text" id="tb_loss3" size="1" value="7">
 	condition: <input type="text" id="tb_cond3" size="30" value="lambda x:1"><br>
 	<hr>
+	Tuning Slider: <input type="text" id="tb_hp" value="self.mdl.opt[0].alpha" size="50">
+	<input type="button" id="b_hpset" value="GetValue" onclick="getHP();"> &nbsp; <span id="hp_value">0.00000</span> &nbsp; <span id="sli_value"></span><br>
+	<center>
+	|<br>
+	<div style="margin-top:-15pt"><input type="range" id="sli_hp" value="0.0" min="-1.0" max="1.0" step="0.00001" style="width:1000px" disabled></div>
+	</center>
+	<hr>
 	Execute Code: <input type="text" id="tb_code" value="self.mdl.opt[0].alpha = 0.001" size="80">
-	<input type="button" id="b_code" value="Execute" onclick="execCode();"><br>
+	<input type="button" id="b_code" value="Execute" onclick="execCode(document.getElementById('tb_code').value);"><br>
 	<hr>
 	<input id="x_logscale" type="checkbox" onchange="drawChart();"/><label for="x_logscale">x logscale</label>
 	<input id="y_logscale" type="checkbox" onchange="drawChart();"/><label for="y_logscale">y logscale</label>
