@@ -120,7 +120,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     
     * `server.py` がバックグラウンドで起動したままになっている。 → `index.html` を（手動で）開いて、 `Shutdown Server` ボタンを押せば終了できます。
     
-    * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → 通信に使用するポート番号を変更しましょう。例えば、ポート 12345 番を使いたい場合は、サーバを `server.py -p 12345` で起動し、 `index.html` の最下部にある `Address of Server` を `http://localhost:12345` と変更してください。
+    * それ以外の何らかのプログラムが `localhost:8000` を使用している。 → 通信に使用するポート番号を変更しましょう。例えば、ポート 12345 番を使いたい場合は、サーバを `server.py -p 12345` で起動し、 `index.html` の最下部にある `Address of Server` を `http://localhost:12345` と変更してください。
 
 * テストエラー見たい
 
