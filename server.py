@@ -98,10 +98,10 @@ class nnmdl:
             if existed: continue # 本当は and not updated としたいが、とりあえず今は updated を無視することにする。TODO
 
             if v['ltype']=='f':
-                self.l[k] = L.Linear(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], filt=['nobias', 'initialW', 'initial_bias']))
+                self.l[k] = L.Linear(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], omit=['act', 'out_channel']))
                 # self.add_link(k, self.l[k])
             elif v['ltype']=='c':
-                self.l[k] = L.Convolution2D(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], filt=['ksize', 'stride', 'pad', 'nobias', 'initialW', 'initial_bias']))
+                self.l[k] = L.Convolution2D(None, int(v['opt']['out_channel']), **filter_dic(v['opt'], omit=['act', 'out_channel']))
             elif v['ltype']=='r':
                 self.l[k] = Sampler(source='random_normal', bs=self.bs, opt=v['opt'], sample_shape=v['opt']['sample_shape'], random_seed=random_seed)
             elif v['ltype']=='i':
@@ -112,14 +112,13 @@ class nnmdl:
                 else:
                     self.l[k] = eval(v['opt']['func']) # Fも同じ扱い
             elif v['ltype']=='b':
-                self.l[k] = L.BatchNormalization(v['opt']['size'])
+                self.l[k] = L.BatchNormalization(v['opt']['size'], **filter_dic(v['opt'], omit=['act', 'size']))
             elif v['ltype']=='e':
                 self.l[k] = [] # 溜め込み場としてのリスト
             elif v['ltype'] in ['i','C','s','v','m','p','+','-','*','T']:
                 pass
             else:
-                print('Not Implemented:', v['ltype'])
-                raise NotImplementedError
+                raise NotImplementedError('Unknown layer type: ' + v['ltype'])
 
 
         if net_info_old is not None: return
@@ -181,11 +180,11 @@ class nnmdl:
             try: # あるノードでエラーが起きても残りのノードは計算して欲しいので、forの内側にtry書く必要ある。
                 n = self.net_info['node'][str(nid)]
                 n_ltype = n['ltype']
-                if n_ltype in ['r', 'i']:
+                if n_ltype in ['r', 'i']: # 0 変数
                     vs = self.prevars(n, sort=True)
                     assert len(vs)==0, '0 arg is expected, but '+str(len(vs))+' are given.'
                     self.h[nid] = self.l[nid]() # サンプル取得
-                elif n_ltype in ['f', 'c', 'b']:
+                elif n_ltype in ['f', 'c', 'b']: # 1 変数 link
                     vs = self.prevars(n, sort=True)
                     assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
                     self.h[nid] = self.l[nid](vs[0])
@@ -197,7 +196,7 @@ class nnmdl:
                     elif typ == 'channel_dim':
                         axis = 1
                     else:
-                        raise ValueError
+                        raise ValueError("Unknown Concat type: "+typ + " (expected: 'batch_dim' or 'channel_dim')")
                     self.h[nid] = F.concat(vs, axis=axis)
                 elif n_ltype in ['+', '*']:
                     vs = self.prevars(n)
@@ -220,10 +219,20 @@ class nnmdl:
                     assert len(vs)==2, '2 args are expected, but '+str(len(vs))+' are given.'
                     self.h[nid] = F.softmax_cross_entropy(vs[0], vs[1])
                     self.acc[nid] = F.accuracy(vs[0], vs[1])
-                elif n_ltype == 'd':
+                elif n_ltype == 'd': # TODO: 1変数 function もまとめ時か
                     vs = self.prevars(n)
                     assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
-                    self.h[nid] = F.dropout(vs[0], **filter_dic(n['opt'], filt=['ratio']))
+                    self.h[nid] = F.dropout(vs[0], **filter_dic(n['opt'], omit=['act']))
+                elif n_ltype == 'p':
+                    vs = self.prevars(n)
+                    assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
+                    typ = n['opt']['type']
+                    if typ == 'max':
+                        self.h[nid] = F.max_pooling_2d(vs[0], **filter_dic(n['opt'], omit=['act', 'type']))
+                    elif typ == 'average':
+                        self.h[nid] = F.average_pooling_2d(vs[0], **filter_dic(n['opt'], omit=['act', 'type']))
+                    else:
+                        raise ValueError("Unknown pooling type: " + typ + " (expected: 'max' or 'average')")
                 elif n_ltype == 'e':
                     # experience replay やってきたサンプルを (リストself.l[nid]に) 溜め込む。そして、同じ数だけランダムに吐き出す。
                     # Variableのitem assignmentが無いようなので、以下の「サンプル」は「ミニバッチ」に読み替えて実装することとする。
@@ -242,18 +251,11 @@ class nnmdl:
                 elif n_ltype == 'v': # value
                     typ = n['opt']['type'] if 'type' in n['opt'] else 'np.float32'
                     self.h[nid] = Variable(np.array([n['opt']['value']]*self.bs, dtype=np.dtype(typ)))
-                    # ary = np.array([n['opt']['value']]*self.bs)
-                    # if ary.dtype in ['int64', 'int']:
-                    #     ary = ary.astype(np.int32)
-                    # elif ary.dtype in ['float64', 'float']:
-                    #     ary = ary.astype(np.float32)                
-                    # self.h[nid] = Variable(ary)
                 elif n_ltype == 'T': # transpose (last 2 dim) それ以外やりたいなら F.transpose でやって
                     vs = self.prevars(n)
                     assert len(vs)==1, '1 arg is expected, but '+str(len(vs))+' are given.'
                     nd = vs[0].data.ndim
                     self.h[nid] = F.transpose(vs[0], axes=list(np.arange(nd-2))+[nd-1, nd-2])
-                    # self.h[nid] = F.transpose(vs[0], **filter_dic(n['opt'], filt=['axes']))
                 elif n_ltype == 'o': # 任意の層
                     vs = self.prevars(n, sort=True)
                     self.h[nid] = eval(n['opt']['func'])(*vs, **filter_dic(n['opt'], omit=['act','func'])) 
@@ -277,7 +279,7 @@ class nnmdl:
                     self.h[nid] = eval(a)(self.h[nid]) # 任意の活性化関数を使える
             except:
                 self.err_info[nid] = get_error_message()
-                del self.h[nid] # 前回の情報が残りっぱなしになるのを防ぐ
+                if nid in self.h: del self.h[nid] # 前回の情報が残りっぱなしになるのを防ぐ
 
     def prevars(self, n, sort=False):
         vs = []
