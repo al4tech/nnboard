@@ -3,7 +3,7 @@ a GUI editor for neural network
 
 chainer 向けの GUI エディタです。
 
-![](https://github.com/yos1up/nnboard/blob/master/nnboard_digest.gif)
+![](/nnboard_digest.gif)
 
 ## 動作環境
 * python 3.5.2 以降 （おそらく 3.5 以降なら動きます）
@@ -54,7 +54,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 * `Del` キーを押すと、選択中の層や結合を削除できます。層を削除すると、層にくっついている結合も一緒に削除されます。
 
-* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。
+* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。（層のタイプ一覧は[こちら](/layers.md)）
 
     * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
 
