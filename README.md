@@ -22,11 +22,13 @@ python server.py
 ```
 `server.py` を実行すると、自動的に `index.html` が開きます。このページ上で、ニューラルネットワークをさくさく設計することができます。
 
+初めての方は、まず一番上の `Load Canvas` ボタンから、サンプルファイル（このディレクトリにある .json ファイルは全てサンプルファイルです）を適当にひとつ読み込んでみて、 青字の `Start Learning` ボタンを押してみてください。学習が始まります。別のサンプルを試すときは、先に青字の `Quit Learning` ボタンを押して、学習を停止してから、 `Load Canvas` ボタンで別のサンプルファイルを読み込み、それから `Start Learning` ボタンを押してください。
+
 ### 終了
 
 `server.py` を Ctrl-C で終了してください。
 
-`index.html` の最下部にある `Shutdown Server` ボタンを押しても、 `server.py` が終了します。
+なお、 `index.html` の最下部にある `Shutdown Server` ボタンを押しても、 `server.py` が終了します。
 
 ### 作業状態の保存と読み込み
 
