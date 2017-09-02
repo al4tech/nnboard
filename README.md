@@ -54,10 +54,10 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 * `Del` キーを押すと、選択中の層や結合を削除できます。層を削除すると、層にくっついている結合も一緒に削除されます。
 
-* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。（層のタイプ一覧は[こちら](/layers.md)）
+* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。（[層タイプ一覧](/layers.md)）
 
-    * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
-
+    * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`*`(掛け算),`-`(マイナス)
+    
     * `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
     
     * `Options` は json の書式で書く必要があります。 None は null で指定します。タプルを指定したいときは、(jsの)Array として書きます。例： `"shape":[-1,1,28,28]`
