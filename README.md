@@ -128,7 +128,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     
 * 学習中にネットワークいじったらどうなるの
 
-    * 現状、どうにもなりません。 ← 部分的に、ネットワークを学習中に動的にいじれるようにしました。ネットワークを変更してから、 `SendNetworkInfoToServer` ボタンを押すと、変更したことをサーバーの計算に反映できます。（link 層はいじれません）
+    * 現状、どうにもなりません。 ← 部分的に、ネットワークを学習中に動的にいじれるようにしました。ネットワークを変更してから、 `SendNetworkInfoToServer` ボタンを押すと、変更したことをサーバーの計算に反映できます。（link 層はいじれません）
 
 * `Start Learning` ボタンを押しても `Quit Learning` に変化しない
 
