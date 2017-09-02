@@ -1,5 +1,5 @@
 # nnboard
-a GUI editor for neural network
+a GUI editor for neural network (especially for chainer)
 
 chainer 向けの GUI エディタです。
 
@@ -12,7 +12,7 @@ chainer 向けの GUI エディタです。
 ## 使い方
 ### ダウンロード
 ```
-git clone https://github.com/yos1up/nnboard.git
+git clone https://github.com/al4tech/nnboard.git
 cd nnboard
 ```
 
@@ -30,7 +30,7 @@ python server.py
 
 ### 作業状態の保存と読み込み
 
-* `index.html` の下の方にある `Download Canvas` リンクを押すと、json ファイルがローカルに保存されます。この中に、構築したネットワークの情報が入っています。
+* `index.html` の一番上にある `Download Canvas` リンクを押すと、json ファイルがローカルに保存されます。この中に、構築したネットワークの情報が入っています。
 
 * `Load Canvas` ボタンを押して json ファイルを選択すると、構築したネットワークが復元されます。
 
@@ -126,6 +126,10 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
     * 現状、そのような機能はありません
     
+* 学習結果を保存したい
+
+    * 現状、そのような機能はありません
+
 * 学習中にネットワークいじったらどうなるの
 
     * 現状、どうにもなりません。 ← 部分的に、ネットワークを学習中に動的にいじれるようにしました。ネットワークを変更してから、 `SendNetworkInfoToServer` ボタンを押すと、変更したことをサーバーの計算に反映できます。（link 層はいじれません）
