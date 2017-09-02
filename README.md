@@ -139,7 +139,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     * おそらく一瞬で学習が落ちてます。
 
 
-
-
-
-
+## License
+* MIT  
+    * see LICENSE
+    
