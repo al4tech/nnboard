@@ -359,6 +359,19 @@ class Sampler:
             if self.source == 'mnist_test_t':
                 self.data = np.array([d[1] for d in mnist_test], dtype=np.int32)
             self.sample_num = len(self.data)
+
+        elif self.source in ['fashion_mnist_train_x', 'fashion_mnist_train_t', 'fashion_mnist_test_x', 'fashion_mnist_test_t']:
+            # self.dataをロードする
+            fashion_mnist_train, fashion_mnist_test = datasets.get_fashion_mnist()
+            if self.source == 'fashion_mnist_train_x':
+                self.data = np.array([d[0] for d in fashion_mnist_train], dtype=np.float32)
+            if self.source == 'fashion_mnist_train_t':
+                self.data = np.array([d[1] for d in fashion_mnist_train], dtype=np.int32)
+            if self.source == 'fashion_mnist_test_x':
+                self.data = np.array([d[0] for d in fashion_mnist_test], dtype=np.float32)
+            if self.source == 'fashion_mnist_test_t':
+                self.data = np.array([d[1] for d in fashion_mnist_test], dtype=np.int32)
+            self.sample_num = len(self.data)
         else:
             raise NotImplementedError
         self.epoch = 0
@@ -521,6 +534,7 @@ class MyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
     def do_POST(self):
+        print("[POST] self.path =", self.path)
         content_len = int(self.headers.get('content-length'))
         requestBody = self.rfile.read(content_len).decode('UTF-8')
         # print('requestBody=' + requestBody)
