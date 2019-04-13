@@ -22,11 +22,13 @@ python server.py
 ```
 `server.py` を実行すると、自動的に `index.html` が開きます。このページ上で、ニューラルネットワークをさくさく設計することができます。
 
+初めての方は、まず一番上の `Load Canvas` ボタンから、サンプルファイル（このディレクトリにある .json ファイルは全てサンプルファイルです）を適当にひとつ読み込んでみて、 青字の `Start Learning` ボタンを押してみてください。学習が始まります。別のサンプルを試すときは、先に青字の `Quit Learning` ボタンを押して、学習を停止してから、 `Load Canvas` ボタンで別のサンプルファイルを読み込み、それから `Start Learning` ボタンを押してください。
+
 ### 終了
 
 `server.py` を Ctrl-C で終了してください。
 
-`index.html` の最下部にある `Shutdown Server` ボタンを押しても、 `server.py` が終了します。
+なお、 `index.html` の最下部にある `Shutdown Server` ボタンを押しても、 `server.py` が終了します。
 
 ### 作業状態の保存と読み込み
 
@@ -54,10 +56,10 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 * `Del` キーを押すと、選択中の層や結合を削除できます。層を削除すると、層にくっついている結合も一緒に削除されます。
 
-* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。（層のタイプ一覧は[こちら](/layers.md)）
+* ある単一の層を選択中に、様々な英字キーを押すことで、層のタイプを変更することができます。（[層タイプ一覧](/layers.md)）
 
-    * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`-`(引き算),`*`(掛け算)
-
+    * 対応キー：`b`(batch Normalization),`c`(convolution),`C`(Concat),`e`(experience replay),`f`(full connected),`i`(input),`m`(mean_squared_loss),`o`(other;任意の関数),`p`(pooling),`r`(random),`R`(Reshape),`s`(softmax_cross_entropy),`T`(Transpose),`+`(足し算),`*`(掛け算),`-`(マイナス)
+    
     * `Options`から、オプション引数を設定できます。`o`の場合は、任意の関数を設定できます。(lambda式も指定可です。例えば `"func":"lambda x,y:F.softmax_cross_entropy(x,y)"`と書けば、タイプ`s`の層と実質的に同じになります。)
     
     * `Options` は json の書式で書く必要があります。 None は null で指定します。タプルを指定したいときは、(jsの)Array として書きます。例： `"shape":[-1,1,28,28]`
@@ -124,11 +126,15 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
 
 * テストエラー見たい
 
-    * 現状、そのような機能はありません
+    * 現状、そのような機能はありませんが、見られるようにしたいと思っています。
     
 * 学習結果を保存したい
 
     * 現状、そのような機能はありません
+    
+* GPU で動かしたい
+
+    * 現状、未対応です
 
 * 学習中にネットワークいじったらどうなるの
 
@@ -139,7 +145,7 @@ Press `Shutdown Server` button in the page to shutdown `server.py`. Otherwise `s
     * おそらく一瞬で学習が落ちてます。
 
 
-
-
-
-
+## License
+* MIT  
+    * see LICENSE
+    
